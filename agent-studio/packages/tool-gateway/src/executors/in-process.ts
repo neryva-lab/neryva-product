@@ -1,7 +1,9 @@
 /**
  * in-process.ts — in-process executor for trusted read-only tools
  * Source: agent_studio_implementation_plan.md:1018-1029
- * Only for trusted code/dependencies; no sandbox overhead. Still enforces timeout, egress, redaction.
+ * Only for trusted code/dependencies; no sandbox overhead. Enforces a wall-clock
+ * timeout via Promise.race only (no cancellation; no egress enforcement — the
+ * egress class is a static descriptor field, not a network mechanism here).
  */
 
 import type { ToolDescriptor } from '@neryva/contracts/tool/descriptor';
