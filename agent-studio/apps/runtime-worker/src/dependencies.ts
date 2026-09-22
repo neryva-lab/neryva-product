@@ -105,9 +105,10 @@ export interface Dependencies {
 
 export async function createDependencies(config: Config): Promise<Dependencies> {
   // Real Connect transport to the Engine MCP authority — no network at construction.
+  // HTTP version is configurable; the Engine serves HTTP/1.1 by default.
   const transport = createConnectTransport({
     baseUrl: config.neryvaMcp.endpoint,
-    httpVersion: '2',
+    httpVersion: config.neryvaMcp.httpVersion,
   });
   const mcpManager = new McpClientManager(transport, config);
   return { mcpManager, transport, config };

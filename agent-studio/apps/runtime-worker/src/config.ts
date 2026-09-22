@@ -25,6 +25,10 @@ const EnvSchema = z.object({
 
   // Neryva MCP
   NERYVA_MCP_ENDPOINT: z.string().url('NERYVA_MCP_ENDPOINT must be valid URL'),
+  // HTTP version for the Connect transport to the Engine MCP authority.
+  // The Engine serves plain HTTP/1.1 (Fastify default); '2' requires the
+  // server to speak h2c. Default matches what the Engine actually serves.
+  NERYVA_MCP_HTTP_VERSION: z.enum(['1.1', '2']).default('1.1'),
   NERYVA_MCP_PROTOCOL_MAJOR: z.coerce.number().int().min(1).default(1),
   NERYVA_MCP_MINIMUM_MINOR: z.coerce.number().int().min(0).default(0),
   NERYVA_MCP_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
@@ -91,6 +95,7 @@ export type Config = Readonly<{
   };
   neryvaMcp: {
     endpoint: string;
+    httpVersion: '1.1' | '2';
     protocolMajor: number;
     minimumMinor: number;
     connectTimeoutMs: number;
@@ -194,6 +199,7 @@ export function parseEnv(raw: Record<string, string | undefined>): Config {
     },
     neryvaMcp: {
       endpoint: env.NERYVA_MCP_ENDPOINT,
+      httpVersion: env.NERYVA_MCP_HTTP_VERSION,
       protocolMajor: env.NERYVA_MCP_PROTOCOL_MAJOR,
       minimumMinor: env.NERYVA_MCP_MINIMUM_MINOR,
       connectTimeoutMs: env.NERYVA_MCP_CONNECT_TIMEOUT_MS,
