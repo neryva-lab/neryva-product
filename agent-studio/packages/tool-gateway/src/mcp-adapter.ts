@@ -54,7 +54,9 @@ export class McpToolAdapter {
     if (!res.ok) {
       throw new Error(`mcp discover HTTP ${res.status}`);
     }
-    const body = (await res.json()) as { result?: { tools?: Array<{ name: string }>; ttlMs?: number } };
+    const body = (await res.json()) as {
+      result?: { tools?: Array<{ name: string }>; ttlMs?: number };
+    };
     const tools = new Map<string, unknown>();
     for (const tool of body.result?.tools ?? []) {
       tools.set(String(tool.name), tool);

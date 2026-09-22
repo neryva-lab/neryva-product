@@ -8,10 +8,14 @@ import { EvalWorker } from './worker.js';
 async function main(): Promise<void> {
   const config = loadEvalConfig();
   const worker = new EvalWorker({ config });
-  console.log(`[eval-worker] ${config.serviceName}@${config.buildVersion} started (datasets: ${worker.getStatus().datasets.join(',')}) — synthetic only, testData=true`);
+  console.log(
+    `[eval-worker] ${config.serviceName}@${config.buildVersion} started (datasets: ${worker.getStatus().datasets.join(',')}) — synthetic only, testData=true`,
+  );
   // In production, would poll evaluation queue; for now, just show status and exit
   const testConv = await worker.runTestConversation({ agentVersion: 'v17', prompt: 'hello' });
-  console.log(`[eval-worker] test conversation ${testConv.conversationId} budget ${testConv.budget} testData=${testConv.testData}`);
+  console.log(
+    `[eval-worker] test conversation ${testConv.conversationId} budget ${testConv.budget} testData=${testConv.testData}`,
+  );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

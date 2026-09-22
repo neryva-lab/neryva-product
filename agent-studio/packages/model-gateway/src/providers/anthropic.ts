@@ -25,7 +25,7 @@ export function createAnthropicAdapter(opts: ProviderFactoryOptions): ProviderAd
   const { timeoutMs = 30_000 } = opts;
   const simulate = isSimulationMode(opts);
   const getApiKey: () => Promise<string> = opts.getApiKey ?? (async () => opts.apiKey ?? '');
-    if (!simulate && !(opts.apiKey || opts.getApiKey)) {
+  if (!simulate && !(opts.apiKey || opts.getApiKey)) {
     throw new NeryvaProviderError({
       code: 'AUTH_FAILED',
       message: 'Anthropic credentials required (apiKey or getApiKey) for real mode',
@@ -94,9 +94,9 @@ export function createAnthropicAdapter(opts: ProviderFactoryOptions): ProviderAd
           {
             providerId: 'anthropic',
             createModel: async (modelId, apiKey) => {
-          const { createAnthropic } = await import('@ai-sdk/anthropic');
-          return createAnthropic({ apiKey })(modelId);
-        },
+              const { createAnthropic } = await import('@ai-sdk/anthropic');
+              return createAnthropic({ apiKey })(modelId);
+            },
             apiKey: getApiKey,
           },
           request,
@@ -290,9 +290,9 @@ export function createAnthropicAdapter(opts: ProviderFactoryOptions): ProviderAd
         {
           providerId: 'anthropic',
           createModel: async (modelId, apiKey) => {
-          const { createAnthropic } = await import('@ai-sdk/anthropic');
-          return createAnthropic({ apiKey })(modelId);
-        },
+            const { createAnthropic } = await import('@ai-sdk/anthropic');
+            return createAnthropic({ apiKey })(modelId);
+          },
           apiKey: getApiKey,
         },
         request,

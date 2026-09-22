@@ -13,11 +13,16 @@
 
 import type { NeryvaMcpClient } from '@neryva/neryva-mcp-client';
 import { create } from '@bufbuild/protobuf';
-import { ArtifactRefSchema, type ArtifactRef } from '@neryva/mcp-contract/gen/ts/neryva/mcp/common/v1/common_pb.js';
+import {
+  ArtifactRefSchema,
+  type ArtifactRef,
+} from '@neryva/mcp-contract/gen/ts/neryva/mcp/common/v1/common_pb.js';
 
 export interface ModelMessageContent {
   role: string;
-  content: string | Array<{ type: 'text'; text: string } | { type: 'image'; mediaType: string; data: string }>;
+  content:
+    | string
+    | Array<{ type: 'text'; text: string } | { type: 'image'; mediaType: string; data: string }>;
 }
 
 export interface CheckpointState {
@@ -35,7 +40,11 @@ export interface CheckpointActivityOptions {
 export function createCheckpointActivities(opts: CheckpointActivityOptions) {
   return {
     /** Save one checkpoint version (best-effort — errors resolve to false). */
-    async saveCheckpoint(params: { runId: string; organizationId: string; state: CheckpointState }): Promise<boolean> {
+    async saveCheckpoint(params: {
+      runId: string;
+      organizationId: string;
+      state: CheckpointState;
+    }): Promise<boolean> {
       try {
         const state = JSON.stringify(params.state);
         const put = (await opts.client.putRunArtifact({
@@ -44,7 +53,13 @@ export function createCheckpointActivities(opts: CheckpointActivityOptions) {
           data: Buffer.from(state, 'utf8'),
         })) as unknown as {
           artifact:
-            | { artifactId: string; uri: string; mediaType?: string; byteLength?: bigint | number; sha256?: Uint8Array }
+            | {
+                artifactId: string;
+                uri: string;
+                mediaType?: string;
+                byteLength?: bigint | number;
+                sha256?: Uint8Array;
+              }
             | undefined;
         } | null;
         const art = put === null ? undefined : put.artifact;
@@ -81,7 +96,9 @@ export function createCheckpointActivities(opts: CheckpointActivityOptions) {
         if (!cp || !cp.checkpointRef || !cp.artifact || !cp.artifact.artifactId) {
           return null;
         }
-        const artifact = (await opts.client.getRunArtifact({ artifactId: cp.artifact.artifactId })) as {
+        const artifact = (await opts.client.getRunArtifact({
+          artifactId: cp.artifact.artifactId,
+        })) as {
           accessUrl: string;
         };
         if (!artifact.accessUrl) {

@@ -128,7 +128,9 @@ export function createLiteLLMAdapter(opts: LiteLLMOptions): ProviderAdapter {
       });
     // REAL path — LiteLLM is OpenAI-compatible; route via AI SDK openai provider
     if (!simulate) {
-      const cap = LITELLM_CAPABILITIES.find((c: { modelId: string }) => c.modelId === request.model) ?? LITELLM_CAPABILITIES[0];
+      const cap =
+        LITELLM_CAPABILITIES.find((c: { modelId: string }) => c.modelId === request.model) ??
+        LITELLM_CAPABILITIES[0];
       if (!cap) throw new Error('no litellm cap');
       try {
         const result = await realGenerate(
@@ -329,7 +331,9 @@ export function createLiteLLMAdapter(opts: LiteLLMOptions): ProviderAdapter {
 
     // REAL path — AI SDK streaming via LiteLLM OpenAI-compatible endpoint
     if (!simulate) {
-      const cap = LITELLM_CAPABILITIES.find((c: { modelId: string }) => c.modelId === request.model) ?? LITELLM_CAPABILITIES[0];
+      const cap =
+        LITELLM_CAPABILITIES.find((c: { modelId: string }) => c.modelId === request.model) ??
+        LITELLM_CAPABILITIES[0];
       if (!cap) throw new Error('no litellm cap');
       return await realStream(
         {

@@ -2,9 +2,10 @@
 
 > **Engine = control plane and system of record. Agent Studio = execution plane / runtime. LLM =
 > reasoning engine.** Every task is phase-gated by `docs/architecture/agent_studio/imp/ledger.md:1`.
-> Do not start Phase N+1 before Phase N exit gates are `DONE`. Verify before you claim done.
-> Harness backlog (post contract-v1.1): execution order and FL-* task IDs live in `docs/dev/final_ledger.md`
-> (mirror of `engine/docs/dev/final_ledger.md`; canonical in the engine repo). FL-1 = publish blockers.
+> Do not start Phase N+1 before Phase N exit gates are `DONE`. Verify before you claim done. Harness
+> backlog (post contract-v1.1): execution order and FL-* task IDs live in `docs/dev/final_ledger.md`
+> (mirror of `engine/docs/dev/final_ledger.md`; canonical in the engine repo). FL-1 = publish
+> blockers.
 
 ## Commands
 

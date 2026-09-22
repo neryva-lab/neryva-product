@@ -125,7 +125,11 @@ export class ModelGateway {
     if (providerId === 'litellm') {
       const adapter = createLiteLLMAdapter(
         hasRealCredential
-          ? { apiKey, getApiKey: () => this.resolveApiKey(providerId), baseUrl: 'http://localhost:4000' }
+          ? {
+              apiKey,
+              getApiKey: () => this.resolveApiKey(providerId),
+              baseUrl: 'http://localhost:4000',
+            }
           : { apiKey, baseUrl: 'http://localhost:4000' },
       );
       this.adapters.set(providerId, adapter);

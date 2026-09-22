@@ -38,7 +38,14 @@ type AiSdkStream = (opts: Record<string, unknown>) => {
   text?: Promise<string>;
 };
 
-let aiModulePromise: Promise<{ generateText: AiSdkGenerate; streamText: AiSdkStream; generateObject: AiSdkGenerate; jsonSchema: (s: unknown) => unknown }> | undefined;
+let aiModulePromise:
+  | Promise<{
+      generateText: AiSdkGenerate;
+      streamText: AiSdkStream;
+      generateObject: AiSdkGenerate;
+      jsonSchema: (s: unknown) => unknown;
+    }>
+  | undefined;
 
 async function loadAiModule(): Promise<{
   generateText: AiSdkGenerate;
@@ -124,8 +131,7 @@ export async function realGenerate(
             description: t.description,
             parameters: jsonSchema(
               (t as { parameters?: unknown; inputSchema?: unknown }).parameters ??
-                (t as { inputSchema?: unknown }).inputSchema ??
-                { type: 'object', properties: {} },
+                (t as { inputSchema?: unknown }).inputSchema ?? { type: 'object', properties: {} },
             ),
           },
         ]),
@@ -136,8 +142,7 @@ export async function realGenerate(
     const mapped = fromAiSdkResult({
       text: result['text'] as string | undefined,
       toolCalls: result['toolCalls'] as
-        | Array<{ toolCallId: string; toolName: string; args: unknown }>
-        | undefined,
+        Array<{ toolCallId: string; toolName: string; args: unknown }> | undefined,
       finishReason: result['finishReason'] as string | undefined,
       usage: result['usage'] as
         | {
@@ -186,7 +191,8 @@ export async function realStream(
   });
 
   async function* mapEvents(): AsyncIterable<NeryvaStreamEvent> {
-    let usageAgg: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
+    let usageAgg:
+      { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
     let finishReason: string | undefined;
     let textAgg = '';
     let aborted = false;
@@ -207,8 +213,10 @@ export async function realStream(
               description: t.description,
               parameters: jsonSchema(
                 (t as { parameters?: unknown; inputSchema?: unknown }).parameters ??
-                  (t as { inputSchema?: unknown }).inputSchema ??
-                  { type: 'object', properties: {} },
+                  (t as { inputSchema?: unknown }).inputSchema ?? {
+                    type: 'object',
+                    properties: {},
+                  },
               ),
             },
           ]),
@@ -257,10 +265,15 @@ export async function realStream(
         providerFinishReason: mapped.providerFinishReason,
         latencyMs: 0,
       };
-      yield { type: 'finish', finishReason: finalResponse.finishReason, usage: finalResponse.usage };
+      yield {
+        type: 'finish',
+        finishReason: finalResponse.finishReason,
+        usage: finalResponse.usage,
+      };
       resolveFinal(finalResponse);
     } catch (e) {
-      if (!aborted) resolveFinal(mapAiSdkError(e, cfg.providerId) as unknown as NeryvaModelResponse);
+      if (!aborted)
+        resolveFinal(mapAiSdkError(e, cfg.providerId) as unknown as NeryvaModelResponse);
       throw e;
     }
   }

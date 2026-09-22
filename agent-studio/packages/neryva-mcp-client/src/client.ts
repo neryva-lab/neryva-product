@@ -127,10 +127,7 @@ export class NeryvaMcpClient {
     this.correlationId = opts.correlationId ?? opts.grantedScope.runId;
     // Cast: the generated service descriptor's I/O types come from the remote es plugin
     // generation; Connect accepts the descriptor at runtime. Conformance tests pin shape.
-    this.authority = createClient(
-      RunAuthorityService as never,
-      opts.transport as never,
-    ) as never;
+    this.authority = createClient(RunAuthorityService as never, opts.transport as never) as never;
     // Observation surface (safe reads: GetRun / ListRunEvents / GetRunArtifact)
     // shares the transport and the capability token presented per call.
     this.observation = createClient(
@@ -189,23 +186,17 @@ export class NeryvaMcpClient {
       expectedLeaseEpoch: params.expectedLeaseEpoch ?? 0n,
       renewUntil: params.renewUntil ? toTimestamp(params.renewUntil) : undefined,
     });
-    return this.callIdempotent(() =>
-      this.authority.acquireOrRenewRunLease(req as never),
-    );
+    return this.callIdempotent(() => this.authority.acquireOrRenewRunLease(req as never));
   }
 
   /** getAuthorizedRunContext → GetAuthorizedRunContext (all context sub-operations). */
-  async getAuthorizedRunContext(
-    requestedPurposes: string[] = [],
-  ): Promise<unknown> {
+  async getAuthorizedRunContext(requestedPurposes: string[] = []): Promise<unknown> {
     const ctx = this.buildRequestContext('GetAuthorizedRunContext');
     const req = create(GetAuthorizedRunContextRequestSchema, {
       ctx,
       requestedPurposes,
     });
-    return this.callIdempotent(() =>
-      this.authority.getAuthorizedRunContext(req as never),
-    );
+    return this.callIdempotent(() => this.authority.getAuthorizedRunContext(req as never));
   }
 
   /**
@@ -250,9 +241,7 @@ export class NeryvaMcpClient {
       state: ApprovalState.PENDING,
     });
     const req = create(CreateApprovalRequestSchema, { ctx, approval });
-    return this.callIdempotent(() =>
-      this.authority.createApprovalRequest(req as never),
-    );
+    return this.callIdempotent(() => this.authority.createApprovalRequest(req as never));
   }
 
   /** submitMemoryProposal → SubmitMemoryProposal. Idempotent per proposal. */
@@ -274,9 +263,7 @@ export class NeryvaMcpClient {
       confidence: params.confidence ?? 0,
       visibility: params.visibility ?? 'private',
     });
-    return this.callIdempotent(() =>
-      this.authority.submitMemoryProposal(req as never),
-    );
+    return this.callIdempotent(() => this.authority.submitMemoryProposal(req as never));
   }
 
   /** authorizeToolCall → AuthorizeToolCall. Idempotent per step+toolCall. */
@@ -299,9 +286,7 @@ export class NeryvaMcpClient {
       toolVersion: params.toolVersion,
       argumentDigest: params.argumentDigest ?? new Uint8Array(),
     });
-    return this.callIdempotent(() =>
-      this.authority.authorizeToolCall(req as never),
-    );
+    return this.callIdempotent(() => this.authority.authorizeToolCall(req as never));
   }
 
   /** recordToolOutcome → RecordToolOutcome. Idempotent per step+toolCall. */
@@ -324,9 +309,7 @@ export class NeryvaMcpClient {
       status: params.status,
       resultRef: params.resultRef,
     });
-    return this.callIdempotent(() =>
-      this.authority.recordToolOutcome(req as never),
-    );
+    return this.callIdempotent(() => this.authority.recordToolOutcome(req as never));
   }
 
   /** saveCheckpointRef → SaveCheckpointRef. Idempotent per checkpoint version. */
@@ -349,9 +332,7 @@ export class NeryvaMcpClient {
       digest: params.digest ?? new Uint8Array(),
       createdAt: params.createdAt ? toTimestamp(params.createdAt) : undefined,
     });
-    return this.callIdempotent(() =>
-      this.authority.saveCheckpointRef(req as never),
-    );
+    return this.callIdempotent(() => this.authority.saveCheckpointRef(req as never));
   }
 
   /**
@@ -397,9 +378,7 @@ export class NeryvaMcpClient {
           }
         : {}),
     });
-    return this.callIdempotent(() =>
-      this.authority.commitRunResult(req as never),
-    );
+    return this.callIdempotent(() => this.authority.commitRunResult(req as never));
   }
 
   /**
@@ -442,9 +421,7 @@ export class NeryvaMcpClient {
       tokenCount: Math.max(0, Math.floor(params.tokenCount ?? 0)),
       modelId: params.modelId ?? '',
     });
-    return this.callIdempotent(() =>
-      this.authority.saveConversationSummary(req as never),
-    );
+    return this.callIdempotent(() => this.authority.saveConversationSummary(req as never));
   }
 
   /**
@@ -480,7 +457,10 @@ export class NeryvaMcpClient {
    * The built-in `request_human_handoff` tool lands here: Engine opens the
    * escalation, pauses the auto-responder, emits the lifecycle event.
    */
-  async requestHumanHandoff(params: { reason: string; note?: string | undefined }): Promise<unknown> {
+  async requestHumanHandoff(params: {
+    reason: string;
+    note?: string | undefined;
+  }): Promise<unknown> {
     const ctx = this.buildRequestContext('RequestHumanHandoff', 'handoff');
     const req = create(RequestHumanHandoffRequestSchema, {
       ctx,
@@ -494,7 +474,11 @@ export class NeryvaMcpClient {
    * putRunArtifact -> PutRunArtifact (contract v1.3, FL-2.13/2.17). Bounded
    * claim-check WRITE through the Engine; returns the ArtifactRef.
    */
-  async putRunArtifact(params: { purpose: 'CHECKPOINT' | 'TOOL_RESULT' | 'GENERATED_MEDIA'; mediaType: string; data: Uint8Array }): Promise<unknown> {
+  async putRunArtifact(params: {
+    purpose: 'CHECKPOINT' | 'TOOL_RESULT' | 'GENERATED_MEDIA';
+    mediaType: string;
+    data: Uint8Array;
+  }): Promise<unknown> {
     const ctx = this.buildRequestContext('PutRunArtifact', `artifact:${params.purpose}`);
     const req = create(PutRunArtifactRequestSchema, {
       ctx,
@@ -511,7 +495,10 @@ export class NeryvaMcpClient {
    */
   async getToolCredential(params: { toolName: string }): Promise<unknown> {
     const ctx = this.buildRequestContext('GetToolCredential', `toolcred:${params.toolName}`);
-    const req = create(GetToolCredentialRequestSchema, { ctx, toolName: params.toolName.slice(0, 128) });
+    const req = create(GetToolCredentialRequestSchema, {
+      ctx,
+      toolName: params.toolName.slice(0, 128),
+    });
     return this.callIdempotent(() => this.authority.getToolCredential(req as never));
   }
 
@@ -542,9 +529,7 @@ export class NeryvaMcpClient {
   async releaseRunLease(leaseEpoch: bigint): Promise<unknown> {
     const ctx = this.buildRequestContext('ReleaseRunLease', `release:${leaseEpoch}`);
     const req = create(ReleaseRunLeaseRequestSchema, { ctx, leaseEpoch });
-    return this.callIdempotent(() =>
-      this.authority.releaseRunLease(req as never),
-    );
+    return this.callIdempotent(() => this.authority.releaseRunLease(req as never));
   }
 }
 

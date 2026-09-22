@@ -8,7 +8,13 @@
  * the authority RPCs; StartRun merely carries the token into the executor).
  */
 
-import { Code, ConnectError, type ConnectRouter, type HandlerContext, type Interceptor } from '@connectrpc/connect';
+import {
+  Code,
+  ConnectError,
+  type ConnectRouter,
+  type HandlerContext,
+  type Interceptor,
+} from '@connectrpc/connect';
 import {
   RuntimeControlService,
   type StartRunRequest,
@@ -30,7 +36,8 @@ export interface RuntimeRpcDeps {
 }
 
 function assertServiceAuth(context: HandlerContext, deps: RuntimeRpcDeps): void {
-  const header = context.requestHeader.get('authorization') ?? context.requestHeader.get('Authorization');
+  const header =
+    context.requestHeader.get('authorization') ?? context.requestHeader.get('Authorization');
   if (!deps.serviceToken) {
     // Dev/staging without a token: allow (Engine↔Studio leg is internal);
     // production config refuses to boot without NERYVA_SERVICE_TOKEN.
@@ -53,7 +60,10 @@ function readCtx(req: unknown): {
 } {
   const c = (req as { ctx?: Record<string, string | undefined> | undefined }).ctx;
   if (!c?.organizationId || !c.conversationId || !c.runId) {
-    throw new ConnectError('ctx.organization_id, ctx.conversation_id and ctx.run_id are required', Code.InvalidArgument);
+    throw new ConnectError(
+      'ctx.organization_id, ctx.conversation_id and ctx.run_id are required',
+      Code.InvalidArgument,
+    );
   }
   return {
     requestId: c.requestId || '',
@@ -129,8 +139,10 @@ export function registerRuntimeControlRpc(router: ConnectRouter, deps: RuntimeRp
     async deliverRunInput(req: DeliverRunInputRequest, context: HandlerContext) {
       assertServiceAuth(context, deps);
       const c = readCtx(req);
-      const kind: 'APPROVAL_DECISION' | 'USER_MESSAGE' = req.kind === 1 ? 'APPROVAL_DECISION' : 'USER_MESSAGE';
-      const payloadRaw = req.payload instanceof Uint8Array ? new TextDecoder().decode(req.payload) : '';
+      const kind: 'APPROVAL_DECISION' | 'USER_MESSAGE' =
+        req.kind === 1 ? 'APPROVAL_DECISION' : 'USER_MESSAGE';
+      const payloadRaw =
+        req.payload instanceof Uint8Array ? new TextDecoder().decode(req.payload) : '';
       let payload: unknown = {};
       try {
         payload = payloadRaw ? (JSON.parse(payloadRaw) as unknown) : {};
@@ -148,7 +160,10 @@ export function registerRuntimeControlRpc(router: ConnectRouter, deps: RuntimeRp
       const nowMs = Date.now();
       return {
         delivered: result.delivered,
-        acceptedAt: { seconds: BigInt(Math.floor(nowMs / 1000)), nanos: (nowMs % 1000) * 1_000_000 },
+        acceptedAt: {
+          seconds: BigInt(Math.floor(nowMs / 1000)),
+          nanos: (nowMs % 1000) * 1_000_000,
+        },
       };
     },
 
@@ -156,8 +171,7 @@ export function registerRuntimeControlRpc(router: ConnectRouter, deps: RuntimeRp
       assertServiceAuth(context, deps);
       const c = readCtx(req);
       const progress = (await deps.control.getProgress(c.runId)) as
-        | { kernelState?: { status?: string } }
-        | undefined;
+        { kernelState?: { status?: string } } | undefined;
       return {
         runId: c.runId,
         workflowId: `agent-run::${c.runId}`,
@@ -174,4 +188,3 @@ export function registerRuntimeControlRpc(router: ConnectRouter, deps: RuntimeRp
     },
   });
 }
-

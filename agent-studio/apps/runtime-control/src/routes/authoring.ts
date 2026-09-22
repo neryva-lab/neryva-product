@@ -25,13 +25,19 @@ export const DraftAgentSchema = z.object({
   agent_id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
   instructions: z.string().min(1).max(20000),
   model_policy: z.object({
-    allowed_models: z.array(z.string().regex(/^[a-z0-9-]+\/[a-z0-9._-]+$/)).min(1).max(16),
+    allowed_models: z
+      .array(z.string().regex(/^[a-z0-9-]+\/[a-z0-9._-]+$/))
+      .min(1)
+      .max(16),
     fallback_enabled: z.boolean().default(false),
   }),
   context_policy: z.object({
     history_limit: z.number().int().min(1).max(100).default(30),
     summary_enabled: z.boolean().default(true),
-    knowledge_sources: z.array(z.string().regex(/^[a-z0-9-]+$/)).max(16).default([]),
+    knowledge_sources: z
+      .array(z.string().regex(/^[a-z0-9-]+$/))
+      .max(16)
+      .default([]),
     memory_scope: z.enum(['user', 'conversation', 'organization', 'none']).default('user'),
   }),
   tools: z
@@ -69,7 +75,13 @@ function hashDefinition(def: DraftAgent): string {
 
 export class AuthoringService {
   private readonly versions = new Map<string, VersionRecord[]>(); // agent_id -> sorted by version
-  private readonly auditLog: Array<{ event: string; agent_id: string; version: number; actor: string; at: string }> = [];
+  private readonly auditLog: Array<{
+    event: string;
+    agent_id: string;
+    version: number;
+    actor: string;
+    at: string;
+  }> = [];
 
   private audit(event: string, agent_id: string, version: number, actor: string): void {
     this.auditLog.push({ event, agent_id, version, actor, at: new Date().toISOString() });
@@ -79,7 +91,10 @@ export class AuthoringService {
   validateDraft(draft: unknown): { ok: true; draft: DraftAgent } | { ok: false; errors: string[] } {
     const parsed = DraftAgentSchema.safeParse(draft);
     if (!parsed.success) {
-      return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) };
+      return {
+        ok: false,
+        errors: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+      };
     }
     const def = parsed.data;
     // Model allowlist must reference capability registry
@@ -98,7 +113,29 @@ export class AuthoringService {
       }
     }
     // Agent-definition validation (JSON schema + capability checker)
-    const validation = validateAgentDefinition({ agent_id: def.agent_id, version: 1, schema_version: 'v1', instructions: def.instructions, model_policy: def.model_policy, context_policy: def.context_policy, tools: def.tools, guardrails: def.guardrails, budget_policy: { max_model_calls: 8, max_tool_calls: 8, max_wall_clock_ms: 120000, max_token_budget: 50000, max_cost_cents: 1000, max_recursion_depth: 5 }, retrieval_policy: { knowledge_max_results: 5, memory_max_results: 5, hybrid_retrieval: false } } as unknown as Parameters<typeof validateAgentDefinition>[0]);
+    const validation = validateAgentDefinition({
+      agent_id: def.agent_id,
+      version: 1,
+      schema_version: 'v1',
+      instructions: def.instructions,
+      model_policy: def.model_policy,
+      context_policy: def.context_policy,
+      tools: def.tools,
+      guardrails: def.guardrails,
+      budget_policy: {
+        max_model_calls: 8,
+        max_tool_calls: 8,
+        max_wall_clock_ms: 120000,
+        max_token_budget: 50000,
+        max_cost_cents: 1000,
+        max_recursion_depth: 5,
+      },
+      retrieval_policy: {
+        knowledge_max_results: 5,
+        memory_max_results: 5,
+        hybrid_retrieval: false,
+      },
+    } as unknown as Parameters<typeof validateAgentDefinition>[0]);
     if (!validation.ok) {
       const msg = validation.error.message;
       return { ok: false, errors: [msg] };
@@ -161,7 +198,11 @@ export class AuthoringService {
     return this.versions.get(agent_id)?.find((v) => v.version === version);
   }
 
-  compareVersions(agent_id: string, a: number, b: number): { added: string[]; removed: string[]; changed: string[]; hashA: string; hashB: string } {
+  compareVersions(
+    agent_id: string,
+    a: number,
+    b: number,
+  ): { added: string[]; removed: string[]; changed: string[]; hashA: string; hashB: string } {
     const va = this.getVersion(agent_id, a);
     const vb = this.getVersion(agent_id, b);
     if (!va || !vb) throw new Error('version not found');
@@ -171,7 +212,11 @@ export class AuthoringService {
     const removed = [...keysA].filter((k) => !keysB.has(k));
     const changed: string[] = [];
     for (const k of [...keysA].filter((k) => keysB.has(k))) {
-      if (JSON.stringify((va.definition as unknown as Record<string, unknown>)[k]) !== JSON.stringify((vb.definition as unknown as Record<string, unknown>)[k])) changed.push(k);
+      if (
+        JSON.stringify((va.definition as unknown as Record<string, unknown>)[k]) !==
+        JSON.stringify((vb.definition as unknown as Record<string, unknown>)[k])
+      )
+        changed.push(k);
     }
     return { added, removed, changed, hashA: va.hash, hashB: vb.hash };
   }
@@ -180,7 +225,13 @@ export class AuthoringService {
   exportVersion(agent_id: string, version: number): string {
     const rec = this.getVersion(agent_id, version);
     if (!rec) throw new Error('not found');
-    return JSON.stringify({ agent_id: rec.agent_id, version: rec.version, schema_version: 'v1', definition: rec.definition, hash: rec.hash });
+    return JSON.stringify({
+      agent_id: rec.agent_id,
+      version: rec.version,
+      schema_version: 'v1',
+      definition: rec.definition,
+      hash: rec.hash,
+    });
   }
 
   importVersion(json: string, actor: string): VersionRecord {

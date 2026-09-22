@@ -113,7 +113,9 @@ export function resolveModerationHook(cfg: ModerationConfig): ModerationHook {
     return noopModerationHook;
   }
   if (!cfg.baseUrl) {
-    throw new Error('HARNESS__MODERATION_BASE_URL is required when HARNESS__MODERATION_PROVIDER=openai_compatible');
+    throw new Error(
+      'HARNESS__MODERATION_BASE_URL is required when HARNESS__MODERATION_PROVIDER=openai_compatible',
+    );
   }
   return new OpenAiCompatibleModerationHook({
     baseUrl: cfg.baseUrl,
@@ -136,7 +138,8 @@ export interface ResolvedGuardrailPolicy {
 }
 
 export function resolveGuardrailPolicy(
-  policy: { input_policy?: string | undefined; output_policy?: string | undefined } | null | undefined,
+  policy:
+    { input_policy?: string | undefined; output_policy?: string | undefined } | null | undefined,
 ): ResolvedGuardrailPolicy {
   const resolve = (value: string | undefined): { enabled: boolean; blockOnFlag: boolean } => {
     if (value === 'off' || value === 'disabled') return { enabled: false, blockOnFlag: false };

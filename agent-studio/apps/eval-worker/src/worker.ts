@@ -18,7 +18,11 @@ export class EvalWorker {
   }
 
   /** 11.3: Test conversation with isolated budget, marked test data */
-  async runTestConversation(params: { agentVersion: string; prompt: string; budgetTokens?: number | undefined }): Promise<{ conversationId: string; testData: true; budget: number }> {
+  async runTestConversation(params: {
+    agentVersion: string;
+    prompt: string;
+    budgetTokens?: number | undefined;
+  }): Promise<{ conversationId: string; testData: true; budget: number }> {
     const budget = params.budgetTokens ?? this.opts.config.budgetTokens;
     if (budget > this.opts.config.budgetTokens) throw new Error('test budget exceeds eval budget');
     // Mark as test data — never mixes canonical trail
@@ -26,11 +30,19 @@ export class EvalWorker {
     return { conversationId, testData: true, budget };
   }
 
-  async runEvaluation(params: { agentVersion: string; model: string; definitionHash: string }): Promise<ReturnType<EvaluationRunner['run']>> {
+  async runEvaluation(params: {
+    agentVersion: string;
+    model: string;
+    definitionHash: string;
+  }): Promise<ReturnType<EvaluationRunner['run']>> {
     return this.runner.run(params);
   }
 
   getStatus(): { service: string; version: string; datasets: string[] } {
-    return { service: this.opts.config.serviceName, version: this.opts.config.buildVersion, datasets: this.runner.getDatasets() };
+    return {
+      service: this.opts.config.serviceName,
+      version: this.opts.config.buildVersion,
+      datasets: this.runner.getDatasets(),
+    };
   }
 }

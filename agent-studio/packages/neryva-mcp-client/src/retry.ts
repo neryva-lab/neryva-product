@@ -108,7 +108,8 @@ export async function withRetry<T>(
         options.baseDelayMs * Math.pow(2, attempt - 1),
       );
       // Full jitter over the smaller of exponential backoff and server hint window
-      const ceiling = serverHint !== undefined ? Math.max(1, Math.min(serverHint, 30_000)) : exponential;
+      const ceiling =
+        serverHint !== undefined ? Math.max(1, Math.min(serverHint, 30_000)) : exponential;
       const delay = Math.floor(Math.random() * ceiling);
       if (opts.onRetry) opts.onRetry(attempt, err, delay);
       await new Promise((r) => setTimeout(r, delay));

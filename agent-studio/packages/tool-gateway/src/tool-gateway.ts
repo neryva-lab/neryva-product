@@ -232,7 +232,9 @@ export class ToolGateway {
         dec.decision === 'APPROVED' &&
         !!dec.approvalId &&
         (dec.stepId === undefined || dec.stepId === stepId) &&
-        (proposal.toolCallId === undefined || dec.toolCallId === undefined || dec.toolCallId === proposal.toolCallId);
+        (proposal.toolCallId === undefined ||
+          dec.toolCallId === undefined ||
+          dec.toolCallId === proposal.toolCallId);
       if (correlated) {
         approved = true;
       } else {
@@ -242,7 +244,8 @@ export class ToolGateway {
           toolCallId: proposal.toolCallId ?? `call_${stepId.slice(0, 8)}`,
           stepId,
           success: false,
-          errorCode: dec && dec.decision === 'APPROVED' ? 'APPROVAL_UNCORRELATED' : 'APPROVAL_REQUIRED',
+          errorCode:
+            dec && dec.decision === 'APPROVED' ? 'APPROVAL_UNCORRELATED' : 'APPROVAL_REQUIRED',
           idempotencyKey: deriveToolIdempotencyKey({
             runId,
             stepId,

@@ -9,11 +9,7 @@
  * content that lost the moderation race never reaches the Engine.
  */
 
-import {
-  moderateContent,
-  resolveGuardrailPolicy,
-  type ModerationHook,
-} from '@neryva/security';
+import { moderateContent, resolveGuardrailPolicy, type ModerationHook } from '@neryva/security';
 
 export interface GuardrailActivityOptions {
   moderation: ModerationHook;
@@ -49,7 +45,12 @@ export function createGuardrailActivities(opts: GuardrailActivityOptions) {
       if (result === null) {
         return { blocked: false, verdict: 'allowed', categories: [], provider: 'policy_disabled' };
       }
-      return { blocked: true, verdict: 'blocked', categories: result.categories, provider: result.provider };
+      return {
+        blocked: true,
+        verdict: 'blocked',
+        categories: result.categories,
+        provider: result.provider,
+      };
     },
   };
 }

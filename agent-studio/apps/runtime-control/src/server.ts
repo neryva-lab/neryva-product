@@ -10,7 +10,11 @@ import { connectNodeAdapter } from '@connectrpc/connect-node';
 import type { Config } from './config.js';
 import { getLiveness, getReadiness } from './routes/health.js';
 import { RuntimeControlService } from './routes/internal-control.js';
-import { registerRuntimeControlRpc, serviceAuthInterceptor, type RuntimeRpcDeps } from './routes/runtime-rpc.js';
+import {
+  registerRuntimeControlRpc,
+  serviceAuthInterceptor,
+  type RuntimeRpcDeps,
+} from './routes/runtime-rpc.js';
 import type { InlineRunExecutor, InlineRunCanceller } from './routes/internal-control.js';
 import { RunCancellationRegistry } from './run-registry.js';
 
@@ -87,7 +91,8 @@ export async function createServer(options: CreateServerOptions): Promise<Server
           ? getLiveness(config.buildVersion)
           : getReadiness(
               {
-                temporalReachable: config.executionMode === 'inline' || options.temporal !== undefined,
+                temporalReachable:
+                  config.executionMode === 'inline' || options.temporal !== undefined,
                 mcpReachable: true,
               },
               config.buildVersion,

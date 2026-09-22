@@ -99,4 +99,3 @@ describe('10.3 Prompt-injection + tool misuse — untrusted content cannot escal
     expect(modelOutput).not.toContain(systemPrompt);
   });
 });
-

@@ -24,7 +24,7 @@ export function createGoogleAdapter(opts: ProviderFactoryOptions): ProviderAdapt
   const { timeoutMs = 30_000 } = opts;
   const simulate = isSimulationMode(opts);
   const getApiKey: () => Promise<string> = opts.getApiKey ?? (async () => opts.apiKey ?? '');
-    if (!simulate && !(opts.apiKey || opts.getApiKey)) {
+  if (!simulate && !(opts.apiKey || opts.getApiKey)) {
     throw new NeryvaProviderError({
       code: 'AUTH_FAILED',
       message: 'Google credentials required (apiKey or getApiKey) for real mode',
@@ -88,9 +88,9 @@ export function createGoogleAdapter(opts: ProviderFactoryOptions): ProviderAdapt
           {
             providerId: 'google',
             createModel: async (modelId, apiKey) => {
-          const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
-          return createGoogleGenerativeAI({ apiKey })(modelId);
-        },
+              const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
+              return createGoogleGenerativeAI({ apiKey })(modelId);
+            },
             apiKey: getApiKey,
           },
           request,
@@ -283,9 +283,9 @@ export function createGoogleAdapter(opts: ProviderFactoryOptions): ProviderAdapt
         {
           providerId: 'google',
           createModel: async (modelId, apiKey) => {
-          const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
-          return createGoogleGenerativeAI({ apiKey })(modelId);
-        },
+            const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
+            return createGoogleGenerativeAI({ apiKey })(modelId);
+          },
           apiKey: getApiKey,
         },
         request,

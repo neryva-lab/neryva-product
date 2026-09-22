@@ -160,7 +160,9 @@ export function parseEnv(raw: Record<string, string | undefined>): Config {
     !env.TOOL_GATEWAY_SANDBOX_ENDPOINT
   ) {
     // Egress allowed without an isolated sandbox boundary in production (1018-1029)
-    throw new Error('fail-closed: allowlist egress requires TOOL_GATEWAY_SANDBOX_ENDPOINT in production');
+    throw new Error(
+      'fail-closed: allowlist egress requires TOOL_GATEWAY_SANDBOX_ENDPOINT in production',
+    );
   }
   if (env.ENVIRONMENT === 'production' && env.TEMPORAL_ADDRESS.startsWith('http://')) {
     throw new Error('fail-closed: production Temporal endpoint must not be plaintext HTTP');

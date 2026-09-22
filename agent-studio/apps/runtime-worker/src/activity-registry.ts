@@ -74,11 +74,17 @@ export function createActivityRegistry(opts: ActivityRegistryOptions): Record<st
   // REL-1.5 — the model gateway resolves provider keys per call through the
   // Engine's audited GetToolCredential rail; the run-scoped client proxy
   // makes every activity call resolve the CURRENT run's capability.
-  const model = createModelActivities(undefined, new EngineSecretProvider(runScopedClient(opts.manager)));
+  const model = createModelActivities(
+    undefined,
+    new EngineSecretProvider(runScopedClient(opts.manager)),
+  );
   const tool = createToolActivities({
     requestHandoff: async (runId: string, args: unknown) => {
       const reasonArg = (args as { reason?: unknown } | null)?.reason;
-      const reason = typeof reasonArg === 'string' && reasonArg.trim() ? reasonArg : 'tool:request_human_handoff';
+      const reason =
+        typeof reasonArg === 'string' && reasonArg.trim()
+          ? reasonArg
+          : 'tool:request_human_handoff';
       const client = runScopedClient(opts.manager);
       return client.requestHumanHandoff({ reason });
     },
@@ -137,7 +143,9 @@ export function createActivityRegistry(opts: ActivityRegistryOptions): Record<st
   // activity uses the bootstrap identity and upgrades the cached client when the
   // Engine-issued capability arrives in the claim response.
   registry['acquireOrRenewRunLease'] = async (params: {
-    scope: Parameters<ReturnType<typeof createMcpActivities>['acquireOrRenewRunLease']>[0] extends infer P
+    scope: Parameters<
+      ReturnType<typeof createMcpActivities>['acquireOrRenewRunLease']
+    >[0] extends infer P
       ? P extends { scope: infer S }
         ? S
         : never

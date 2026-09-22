@@ -102,7 +102,9 @@ function getGateway(params: ModelCallParams): ModelGateway {
 export class EngineSecretProvider implements SecretProvider {
   constructor(private readonly client: EngineCredentialClient) {}
   async resolve(ref: SecretRef): Promise<string> {
-    const response = (await this.client.getToolCredential({ toolName: ref.ref })) as { credential?: unknown } | null;
+    const response = (await this.client.getToolCredential({ toolName: ref.ref })) as {
+      credential?: unknown;
+    } | null;
     const credential = typeof response?.credential === 'string' ? response.credential : '';
     if (credential.length === 0) {
       throw new Error(

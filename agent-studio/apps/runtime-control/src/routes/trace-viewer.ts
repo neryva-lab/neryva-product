@@ -27,10 +27,13 @@ export interface RedactedTrace {
 
 export function toRedactedTrace(spans: TraceSpan[], diagnosticModeActive = false): RedactedTrace {
   const runId = (spans[0]?.attributes['neryva.run_id'] as string | undefined) ?? 'unknown';
-  const correlationId = (spans[0]?.attributes['neryva.correlation_id'] as string | undefined) ?? 'unknown';
+  const correlationId =
+    (spans[0]?.attributes['neryva.correlation_id'] as string | undefined) ?? 'unknown';
   const artifactIds: string[] = [];
   const redactedSpans = spans.map((s) => {
-    const redactedAttrs = diagnosticModeActive ? s.attributes : redactAttributes(s.attributes as Record<string, unknown>);
+    const redactedAttrs = diagnosticModeActive
+      ? s.attributes
+      : redactAttributes(s.attributes as Record<string, unknown>);
     // Collect artifact IDs (hashes not raw)
     for (const [k, v] of Object.entries(redactedAttrs)) {
       if (k.includes('artifact') && typeof v === 'string') artifactIds.push(v);
@@ -38,7 +41,13 @@ export function toRedactedTrace(spans: TraceSpan[], diagnosticModeActive = false
     }
     return { ...s, attributes: redactedAttrs };
   });
-  return { runId, correlationId, spans: redactedSpans, artifactIds: [...new Set(artifactIds)], diagnosticMode: diagnosticModeActive };
+  return {
+    runId,
+    correlationId,
+    spans: redactedSpans,
+    artifactIds: [...new Set(artifactIds)],
+    diagnosticMode: diagnosticModeActive,
+  };
 }
 
 export function getRedactedAttributes(span: TraceSpan): Record<string, unknown> {

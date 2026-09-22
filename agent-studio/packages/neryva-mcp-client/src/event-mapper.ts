@@ -8,9 +8,7 @@
 import { create } from '@bufbuild/protobuf';
 import { RunEventSchema } from '@neryva/mcp-contract/gen/ts/neryva/mcp/event/v1/event_pb.js';
 import type { RunEvent } from '@neryva/mcp-contract/gen/ts/neryva/mcp/event/v1/event_pb.js';
-import {
-  ArtifactRefSchema,
-} from '@neryva/mcp-contract/gen/ts/neryva/mcp/common/v1/common_pb.js';
+import { ArtifactRefSchema } from '@neryva/mcp-contract/gen/ts/neryva/mcp/common/v1/common_pb.js';
 import {
   EventType,
   RedactionClass,
@@ -65,7 +63,10 @@ export function toMcpRunEvent(e: RuntimeEvent): RunEvent {
       return create(RunEventSchema, {
         ...base,
         type: EventType.RUN_LIFECYCLE,
-        body: { case: 'lifecycle', value: { fromState: '', toState: 'RUNNING', reason: 'run_started' } },
+        body: {
+          case: 'lifecycle',
+          value: { fromState: '', toState: 'RUNNING', reason: 'run_started' },
+        },
       });
     case 'ContextPrepared':
       return create(RunEventSchema, {
@@ -95,7 +96,11 @@ export function toMcpRunEvent(e: RuntimeEvent): RunEvent {
         type: EventType.RUN_LIFECYCLE,
         body: {
           case: 'lifecycle',
-          value: { fromState: '', toState: '', reason: `warning:${e.body.code}:${e.body.messageHash}` },
+          value: {
+            fromState: '',
+            toState: '',
+            reason: `warning:${e.body.code}:${e.body.messageHash}`,
+          },
         },
       });
     case 'AssistantThinking':
@@ -114,9 +119,10 @@ export function toMcpRunEvent(e: RuntimeEvent): RunEvent {
           value: {
             modelId: e.body.modelId,
             providerRequestId: '',
-            requestRef: e.body.kind === 'ModelCallCompleted' && e.body.artifactRef
-              ? toArtifactRef(e.body.artifactRef)
-              : undefined,
+            requestRef:
+              e.body.kind === 'ModelCallCompleted' && e.body.artifactRef
+                ? toArtifactRef(e.body.artifactRef)
+                : undefined,
             responseRef: undefined,
           },
         },
@@ -151,7 +157,10 @@ export function toMcpRunEvent(e: RuntimeEvent): RunEvent {
       return create(RunEventSchema, {
         ...base,
         type: EventType.APPROVAL,
-        body: { case: 'approval', value: { approvalId: e.body.approvalId, state: 'PENDING', decisionId: '' } },
+        body: {
+          case: 'approval',
+          value: { approvalId: e.body.approvalId, state: 'PENDING', decisionId: '' },
+        },
       });
     case 'ToolCallApproved':
       return create(RunEventSchema, {
@@ -175,13 +184,19 @@ export function toMcpRunEvent(e: RuntimeEvent): RunEvent {
       return create(RunEventSchema, {
         ...base,
         type: EventType.MEDIA,
-        body: { case: 'media', value: { artifactId: e.body.artifactId, mediaType: e.body.mediaType } },
+        body: {
+          case: 'media',
+          value: { artifactId: e.body.artifactId, mediaType: e.body.mediaType },
+        },
       });
     case 'MemoryProposed':
       return create(RunEventSchema, {
         ...base,
         type: EventType.MEMORY,
-        body: { case: 'memory', value: { proposalId: e.body.proposalId, scope: e.body.scope, decision: 'PROPOSED' } },
+        body: {
+          case: 'memory',
+          value: { proposalId: e.body.proposalId, scope: e.body.scope, decision: 'PROPOSED' },
+        },
       });
     case 'RunCompleted':
       return create(RunEventSchema, {
@@ -193,7 +208,10 @@ export function toMcpRunEvent(e: RuntimeEvent): RunEvent {
       return create(RunEventSchema, {
         ...base,
         type: EventType.TERMINAL,
-        body: { case: 'terminal', value: { code: e.body.errorCode, message: e.body.errorMessageHash } },
+        body: {
+          case: 'terminal',
+          value: { code: e.body.errorCode, message: e.body.errorMessageHash },
+        },
       });
   }
 }

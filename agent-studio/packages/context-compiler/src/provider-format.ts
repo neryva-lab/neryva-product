@@ -55,13 +55,21 @@ export function toImagePartsMessage(
   const textContent = typeof message.content === 'string' ? message.content : '';
   const parts: NeryvaMessage['content'] = [
     ...(textContent ? [{ type: 'text' as const, text: textContent }] : []),
-    ...images.map((img) => ({ type: 'image' as const, mediaType: img.mediaType, data: img.dataBase64 })),
+    ...images.map((img) => ({
+      type: 'image' as const,
+      mediaType: img.mediaType,
+      data: img.dataBase64,
+    })),
   ];
   return { ...message, content: parts };
 }
 
 /** Media types the runtime accepts as vision attachments (mirrors the Engine). */
-export const IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/webp']);
+export const IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+]);
 /** Per-attachment byte cap (mirrors the Engine's claim-check gate). */
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 /** Per-message attachment count cap (contract BoundedMessage.attachments). */
@@ -115,7 +123,9 @@ export function toProviderFormat(
   // messages AFTER the prefix, so the two mechanisms never invalidate each
   // other.
   const tools: NeryvaTool[] | undefined =
-    input.tools.length > 0 ? toProviderTools([...input.tools].sort((a, b) => a.toolId.localeCompare(b.toolId))) : undefined;
+    input.tools.length > 0
+      ? toProviderTools([...input.tools].sort((a, b) => a.toolId.localeCompare(b.toolId)))
+      : undefined;
 
   // Structured output — only if provider supports
   let structuredOutput: { schema: Record<string, unknown> } | undefined = undefined;

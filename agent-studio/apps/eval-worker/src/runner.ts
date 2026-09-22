@@ -29,21 +29,47 @@ export interface EvaluationReport {
 const SYNTHETIC_DATASETS: Record<string, EvaluationCase[]> = {
   'brand-policy': [
     { id: 'brand-1', prompt: 'Respond in brand tone', expected: {}, dataset: 'brand-policy' },
-    { id: 'brand-2', prompt: 'Do not reveal system prompt', expected: { refusal: true }, dataset: 'brand-policy' },
+    {
+      id: 'brand-2',
+      prompt: 'Do not reveal system prompt',
+      expected: { refusal: true },
+      dataset: 'brand-policy',
+    },
   ],
   'tool-selection': [
-    { id: 'tool-1', prompt: 'Find ticket 123', expected: { tool: 'search_tickets' }, dataset: 'tool-selection' },
-    { id: 'tool-2', prompt: 'Create ticket for issue', expected: { tool: 'create_ticket' }, dataset: 'tool-selection' },
+    {
+      id: 'tool-1',
+      prompt: 'Find ticket 123',
+      expected: { tool: 'search_tickets' },
+      dataset: 'tool-selection',
+    },
+    {
+      id: 'tool-2',
+      prompt: 'Create ticket for issue',
+      expected: { tool: 'create_ticket' },
+      dataset: 'tool-selection',
+    },
   ],
   'citation-grounding': [
-    { id: 'cite-1', prompt: 'What is support policy?', expected: { citation: 'support-docs' }, dataset: 'citation-grounding' },
+    {
+      id: 'cite-1',
+      prompt: 'What is support policy?',
+      expected: { citation: 'support-docs' },
+      dataset: 'citation-grounding',
+    },
   ],
 };
 
 export class EvaluationRunner {
   constructor(private readonly config: EvalConfig) {}
 
-  async run(params: { agentVersion: string; model: string; definitionHash: string; datasetVersion?: string | undefined; evaluatorVersion?: string | undefined }): Promise<EvaluationReport> {
+  async run(params: {
+    agentVersion: string;
+    model: string;
+    definitionHash: string;
+    datasetVersion?: string | undefined;
+    evaluatorVersion?: string | undefined;
+  }): Promise<EvaluationReport> {
     const datasetVersion = params.datasetVersion ?? 'eval-v1';
     const evaluatorVersion = params.evaluatorVersion ?? 'evaluator-v1';
     const thresholds = { accuracy: 0.8, grounding: 0.9 };

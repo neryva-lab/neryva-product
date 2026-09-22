@@ -130,4 +130,3 @@ describe('10.1 Tenant isolation — every query requires tenant scope', () => {
     expect(forOrgA[0].data).toBe('a');
   });
 });
-

@@ -41,7 +41,13 @@ type McpActivities = {
   commitRunResult(params: {
     resultText: string;
     expectedVersion?: bigint;
-    usage?: { provider: string; model: string; promptTokens: number; completionTokens: number; totalTokens: number };
+    usage?: {
+      provider: string;
+      model: string;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    };
     suggestedFollowups?: string[];
   }): Promise<unknown>;
   failRun(params: { errorCode: string; errorMessage: string }): Promise<unknown>;
@@ -67,15 +73,36 @@ type ContextActivities = {
       description?: string | undefined;
       inputSchema?: Record<string, unknown> | undefined;
     }>;
-    budgets: { maxModelCalls: number; maxToolCalls: number; maxTurns: number; maxTotalTokens: number; wallClockSeconds: number };
+    budgets: {
+      maxModelCalls: number;
+      maxToolCalls: number;
+      maxTurns: number;
+      maxTotalTokens: number;
+      wallClockSeconds: number;
+    };
     citationRefs?: string[];
-    modelParams?: { temperature?: number; maxOutputTokens?: number; topP?: number; reasoningEffort?: string };
+    modelParams?: {
+      temperature?: number;
+      maxOutputTokens?: number;
+      topP?: number;
+      reasoningEffort?: string;
+    };
     allowedModels?: string[];
     guardrailPolicy: { input_policy: string; output_policy: string };
-    triggerAttachments: Array<{ artifactId: string; mediaType: string; byteLength: number; sha256?: Uint8Array }>;
+    triggerAttachments: Array<{
+      artifactId: string;
+      mediaType: string;
+      byteLength: number;
+      sha256?: Uint8Array;
+    }>;
   }>;
   fetchRunImages(params: {
-    attachments: Array<{ artifactId: string; mediaType: string; byteLength: number; sha256?: Uint8Array }>;
+    attachments: Array<{
+      artifactId: string;
+      mediaType: string;
+      byteLength: number;
+      sha256?: Uint8Array;
+    }>;
   }): Promise<Array<{ artifactId: string; mediaType: string; dataBase64: string }>>;
 };
 
@@ -96,7 +123,9 @@ type EventActivities = {
 };
 
 /** FL-1.6 — multimodal content: text-only string or text+image parts. */
-type ModelMessageContent = string | Array<{ type: 'text'; text: string } | { type: 'image'; mediaType: string; data: string }>;
+type ModelMessageContent =
+  | string
+  | Array<{ type: 'text'; text: string } | { type: 'image'; mediaType: string; data: string }>;
 
 type ModelActivities = {
   callModel(params: {
@@ -183,9 +212,8 @@ type CheckpointActivities = {
 };
 
 // Signals & queries — single source of truth (also exported from signals.ts)
-const cancelSignal = defineSignal<[{ reason: string; requestedBy: string; requestedAt: string }]>(
-  'CancelRun',
-);
+const cancelSignal =
+  defineSignal<[{ reason: string; requestedBy: string; requestedAt: string }]>('CancelRun');
 const approvalSignal = defineSignal<
   [
     {
@@ -407,7 +435,9 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
     if (pending) {
       pending.resolve(queued);
       // Consume once — drain removes from pendingSignals so a replay/CAN cannot double-apply
-      progress.pendingSignals = progress.pendingSignals.filter((s) => s.approvalId !== payload.approvalId);
+      progress.pendingSignals = progress.pendingSignals.filter(
+        (s) => s.approvalId !== payload.approvalId,
+      );
     } else {
       progress.pendingSignals.push(queued);
     }
@@ -466,7 +496,8 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       const run = (raw as Record<string, unknown>)['run'];
       const pool: unknown[] = [raw, ...(typeof run === 'object' && run !== null ? [run] : [])];
       for (const source of pool) {
-        const candidate = (source as Record<string, unknown>)[field] ?? (source as Record<string, unknown>)[alt];
+        const candidate =
+          (source as Record<string, unknown>)[field] ?? (source as Record<string, unknown>)[alt];
         if (typeof candidate === 'bigint') return candidate;
         if (typeof candidate === 'number') return BigInt(candidate);
       }
@@ -485,9 +516,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
     );
     if (drained) {
       // Drain: consume from pending so a replay/CAN cannot double-apply
-      progress.pendingSignals = progress.pendingSignals.filter(
-        (s) => s.approvalId !== approvalId,
-      );
+      progress.pendingSignals = progress.pendingSignals.filter((s) => s.approvalId !== approvalId);
       return drained;
     }
     const pendingEntry = { signalId: approvalId } as QueuedSignal;
@@ -570,7 +599,10 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           messageHash: `moderation categories: ${inputScreening.categories.join(',')}`,
         },
       }).catch(() => {});
-      await failRun({ errorCode: 'GUARDRAIL_BLOCKED', errorMessage: 'user input blocked by guardrail policy' });
+      await failRun({
+        errorCode: 'GUARDRAIL_BLOCKED',
+        errorMessage: 'user input blocked by guardrail policy',
+      });
       return 'blocked by guardrail policy';
     }
     progress.kernelState.status = 'MODEL_STEP';
@@ -609,7 +641,6 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
     // model sees its own tool outcomes on the next turn (bounded by budgets).
     const messages: Array<{ role: string; content: ModelMessageContent }> = [...compiled.messages];
 
-
     const toolByName = new Map(compiled.tools.map((t) => [t.name, t]));
 
     // FL-1.6 — vision input: claim-check fetch + multimodal parts on the
@@ -632,13 +663,16 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           role: target.role,
           content: [
             ...(textContent ? [{ type: 'text' as const, text: textContent }] : []),
-            ...fetchedImages.map((img) => ({ type: 'image' as const, mediaType: img.mediaType, data: img.dataBase64 })),
+            ...fetchedImages.map((img) => ({
+              type: 'image' as const,
+              mediaType: img.mediaType,
+              data: img.dataBase64,
+            })),
           ],
         };
         messages[lastUserIdx] = updated;
       }
     }
-
 
     const MAX_TURNS = budgets.maxTurns;
     let turns = 0;
@@ -764,7 +798,10 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
               messageHash: `moderation categories: ${outputScreening.categories.join(',')}`,
             },
           }).catch(() => {});
-          await failRun({ errorCode: 'GUARDRAIL_BLOCKED', errorMessage: 'assistant output blocked by guardrail policy' });
+          await failRun({
+            errorCode: 'GUARDRAIL_BLOCKED',
+            errorMessage: 'assistant output blocked by guardrail policy',
+          });
           progress.kernelState.status = 'FAILED';
           return 'blocked by guardrail policy';
         }
@@ -924,7 +961,10 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         const runnable = modelRes.toolCalls.filter((c) => !entries.has(c.id));
         // Tool budget per call (FL-1.2) — calls past the pinned cap fail
         // without executing; the run then fails BUDGET_EXHAUSTED below.
-        const remainingToolBudget = Math.max(0, budgets.maxToolCalls - progress.kernelState.loopCounters.toolCalls);
+        const remainingToolBudget = Math.max(
+          0,
+          budgets.maxToolCalls - progress.kernelState.loopCounters.toolCalls,
+        );
         const withinBudget = runnable.slice(0, remainingToolBudget);
         const overBudget = runnable.slice(remainingToolBudget);
         for (const call of overBudget) {
@@ -1078,7 +1118,10 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
 
       // Handoff / unknown finish → finalize
       progress.kernelState.status = 'FINALIZE';
-      await commitRunResult({ resultText: modelRes.text ?? '', expectedVersion: expectedRunVersion });
+      await commitRunResult({
+        resultText: modelRes.text ?? '',
+        expectedVersion: expectedRunVersion,
+      });
       progress.kernelState.status = 'COMMIT_RESULT';
       return modelRes.text ?? '';
     }

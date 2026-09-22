@@ -112,7 +112,10 @@ function getGateway(): ToolGateway {
   return gateway;
 }
 
-export async function executeTool(params: ExecuteToolParams, deps?: ToolActivityOptions): Promise<ToolExecutionResult> {
+export async function executeTool(
+  params: ExecuteToolParams,
+  deps?: ToolActivityOptions,
+): Promise<ToolExecutionResult> {
   heartbeat({ step: 'executeTool:start', toolName: params.toolName, stepId: params.stepId });
   if (isActivityCancelled()) throw new Error('CANCELLED');
 
@@ -258,7 +261,12 @@ export interface ToolActivityOptions {
 }
 
 export function createToolActivities(deps?: ToolActivityOptions) {
-  return { executeTool: (params: ExecuteToolParams) => executeTool(params, deps), authorizeToolCall, __clearFakeTicketStore, __getFakeTicketStore };
+  return {
+    executeTool: (params: ExecuteToolParams) => executeTool(params, deps),
+    authorizeToolCall,
+    __clearFakeTicketStore,
+    __getFakeTicketStore,
+  };
 }
 
 export type ToolActivities = ReturnType<typeof createToolActivities>;

@@ -76,7 +76,9 @@ async function main(): Promise<void> {
       baseUrl: config.litellmBaseUrl,
     });
     const adapters = new Map(
-      ['litellm', 'openai', 'anthropic', 'google'].map((providerId) => [providerId, litellm] as const),
+      ['litellm', 'openai', 'anthropic', 'google'].map(
+        (providerId) => [providerId, litellm] as const,
+      ),
     );
     gateway = new Gateway({ adapters, allowTestCredentials: false });
   }

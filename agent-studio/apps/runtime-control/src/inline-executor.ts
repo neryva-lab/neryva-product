@@ -28,7 +28,13 @@ import { NeryvaMcpClient, type CapabilityToken } from '@neryva/neryva-mcp-client
 import { createRuntimeEvent, type RuntimeEvent } from '@neryva/contracts/events/runtime-events';
 import { startSpan, endSpan, type CorrelationContext } from '@neryva/telemetry';
 import { parseAgentDefinition, type AgentDefinitionV1 } from '@neryva/agent-definition';
-import { compileContext, toImagePartsMessage, IMAGE_MEDIA_TYPES, MAX_ATTACHMENT_BYTES, type CompilerInput } from '@neryva/context-compiler';
+import {
+  compileContext,
+  toImagePartsMessage,
+  IMAGE_MEDIA_TYPES,
+  MAX_ATTACHMENT_BYTES,
+  type CompilerInput,
+} from '@neryva/context-compiler';
 import { ModelGateway } from '@neryva/model-gateway';
 import type { NeryvaMessage } from '@neryva/contracts/provider/model-request';
 import {
@@ -37,14 +43,13 @@ import {
   noopModerationHook,
   type ModerationHook,
 } from '@neryva/security';
-import {
-  ToolGateway,
-  InMemoryToolRegistry,
-  type ToolContext,
-} from '@neryva/tool-gateway';
+import { ToolGateway, InMemoryToolRegistry, type ToolContext } from '@neryva/tool-gateway';
 import type { ToolDescriptor } from '@neryva/contracts/tool/descriptor';
 import { create } from '@bufbuild/protobuf';
-import { ArtifactRefSchema, type ArtifactRef } from '@neryva/mcp-contract/gen/ts/neryva/mcp/common/v1/common_pb.js';
+import {
+  ArtifactRefSchema,
+  type ArtifactRef,
+} from '@neryva/mcp-contract/gen/ts/neryva/mcp/common/v1/common_pb.js';
 import type { Config } from './config.js';
 import type { RunCancellationRegistry } from './run-registry.js';
 
@@ -107,9 +112,13 @@ function buildCapability(input: InlineRunInput, config: Config): CapabilityToken
           runId: input.runId,
           agentVersionId: input.agentVersionId,
           actorId: input.actorId,
-          allowedMethods: Array.isArray(claims.allowed_ops) && claims.allowed_ops.length > 0 ? claims.allowed_ops : ['*'],
+          allowedMethods:
+            Array.isArray(claims.allowed_ops) && claims.allowed_ops.length > 0
+              ? claims.allowed_ops
+              : ['*'],
           issuedAt: typeof claims.iat === 'number' ? claims.iat * 1000 : Date.now(),
-          expiresAt: typeof claims.exp === 'number' ? claims.exp * 1000 : Date.now() + 24 * 3600 * 1000,
+          expiresAt:
+            typeof claims.exp === 'number' ? claims.exp * 1000 : Date.now() + 24 * 3600 * 1000,
           keyId: claims.kid ?? config.mcpEndpoint,
         };
       }
@@ -133,7 +142,11 @@ function buildCapability(input: InlineRunInput, config: Config): CapabilityToken
   };
 }
 
-function transportFor(config: Config, override?: Transport | undefined, capabilityToken?: string): Transport {
+function transportFor(
+  config: Config,
+  override?: Transport | undefined,
+  capabilityToken?: string,
+): Transport {
   if (override) return override;
   const base = createConnectTransport({ baseUrl: config.mcpEndpoint, httpVersion: '1.1' });
   if (!capabilityToken) return base;
@@ -148,12 +161,30 @@ function transportFor(config: Config, override?: Transport | undefined, capabili
     unary: async (service, method, signal, header, message, contextValues) => {
       const h = new Headers(header as Headers);
       h.set('authorization', `Bearer ${capabilityToken}`);
-      return (base.unary as unknown as (s: unknown,m: unknown,sig: unknown,h: unknown,msg: unknown,cv: unknown)=>Promise<unknown>)(service, method, signal, h, message, contextValues);
+      return (
+        base.unary as unknown as (
+          s: unknown,
+          m: unknown,
+          sig: unknown,
+          h: unknown,
+          msg: unknown,
+          cv: unknown,
+        ) => Promise<unknown>
+      )(service, method, signal, h, message, contextValues);
     },
     stream: async (service, method, signal, header, message, contextValues) => {
       const h = new Headers(header as Headers);
       h.set('authorization', `Bearer ${capabilityToken}`);
-      return (base.stream as unknown as (s: unknown,m: unknown,sig: unknown,h: unknown,msg: unknown,cv: unknown)=>Promise<unknown>)(service, method, signal, h, message, contextValues);
+      return (
+        base.stream as unknown as (
+          s: unknown,
+          m: unknown,
+          sig: unknown,
+          h: unknown,
+          msg: unknown,
+          cv: unknown,
+        ) => Promise<unknown>
+      )(service, method, signal, h, message, contextValues);
     },
   } as Transport;
 }
@@ -176,7 +207,13 @@ interface ManifestLike {
     messageId: string;
     role: string;
     text: string;
-    attachments?: Array<{ artifactId: string; mediaType: string; byteLength: number; sha256?: Uint8Array; purpose?: string }>;
+    attachments?: Array<{
+      artifactId: string;
+      mediaType: string;
+      byteLength: number;
+      sha256?: Uint8Array;
+      purpose?: string;
+    }>;
   }>;
   memories?: Array<{ memoryId: string; scope: string; content?: string }>;
   knowledgeRefs?: Array<{ documentId: string; chunkId: string; snippet?: string; title?: string }>;
@@ -200,14 +237,20 @@ function producer(input: InlineRunInput) {
   };
 }
 
-function event(input: InlineRunInput, type: RuntimeEvent['type'], body: RuntimeEvent['body']): RuntimeEvent {
+function event(
+  input: InlineRunInput,
+  type: RuntimeEvent['type'],
+  body: RuntimeEvent['body'],
+): RuntimeEvent {
   return createRuntimeEvent({ ...producer(input), type }, body);
 }
 
 /** Build the immutable agent definition from the Engine-authorized manifest. */
 function definitionFromManifest(manifest: ManifestLike): AgentDefinitionV1 | undefined {
   const raw = {
-    agent_id: `agent-${String(manifest.assistantVersionId ?? 'unknown').toLowerCase().replace(/[^a-z0-9-]/g, '')}`,
+    agent_id: `agent-${String(manifest.assistantVersionId ?? 'unknown')
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '')}`,
     version: 1,
     schema_version: 'v1' as const,
     instructions:
@@ -249,12 +292,16 @@ function definitionFromManifest(manifest: ManifestLike): AgentDefinitionV1 | und
 
 /** sha256 over the canonical JSON of the tool args — the Engine dedup digest. */
 function argsDigest(args: unknown): Uint8Array {
-  return createHash('sha256').update(JSON.stringify(args ?? {})).digest();
+  return createHash('sha256')
+    .update(JSON.stringify(args ?? {}))
+    .digest();
 }
 
 /** sha256 over the result body — RecordToolOutcome dedup digest. */
 function resultDigest(result: unknown): Uint8Array {
-  return createHash('sha256').update(JSON.stringify(result ?? null)).digest();
+  return createHash('sha256')
+    .update(JSON.stringify(result ?? null))
+    .digest();
 }
 
 interface ToolTurnEntry {
@@ -346,7 +393,7 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
     if (claim.acquired === false) {
       throw new Error(`RUN_ALREADY_CLAIMED:${input.runId}`);
     }
-    const leaseEpoch: bigint = (claim.run?.leaseEpoch ?? claim.leaseEpoch) ?? 0n;
+    const leaseEpoch: bigint = claim.run?.leaseEpoch ?? claim.leaseEpoch ?? 0n;
     const expectedRunVersion: bigint = claim.run?.version ?? 0n;
 
     const startedAtMs = Date.now();
@@ -393,10 +440,14 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
     maxToolCalls = Number(budgets.maxToolCalls ?? definition.budget_policy.max_tool_calls) || 8;
     const wallClockSeconds = Number(budgets.wallClockSeconds ?? 0);
     wallClockDeadlineMs =
-      wallClockSeconds > 0 ? startedAtMs + wallClockSeconds * 1000 : startedAtMs + definition.budget_policy.max_wall_clock_ms;
+      wallClockSeconds > 0
+        ? startedAtMs + wallClockSeconds * 1000
+        : startedAtMs + definition.budget_policy.max_wall_clock_ms;
     armDeadlineTimer();
 
-    let terminal: 'COMPLETED' | 'FAILED_BUDGET' | 'FAILED_GUARDRAIL' | 'CANCELLED' | 'PARKED_APPROVAL' = 'COMPLETED';
+    let terminal:
+      'COMPLETED' | 'FAILED_BUDGET' | 'FAILED_GUARDRAIL' | 'CANCELLED' | 'PARKED_APPROVAL' =
+      'COMPLETED';
 
     // FL-1.4 — user input screening at run start. A block fails the run
     // GUARDRAIL_BLOCKED before any model call or tool effect.
@@ -405,9 +456,16 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
       output_policy: manifest.guardrailPolicy?.outputPolicy,
     });
     const moderationHook = deps.moderation ?? noopModerationHook;
-    const screeningUser = [...(manifest.recentMessages ?? [])].reverse().find((m) => m.role === 'user');
+    const screeningUser = [...(manifest.recentMessages ?? [])]
+      .reverse()
+      .find((m) => m.role === 'user');
     if (screeningUser && screeningUser.text) {
-      const inputBlocked = await moderateContent(moderationHook, guardrailPolicy, screeningUser.text, 'input');
+      const inputBlocked = await moderateContent(
+        moderationHook,
+        guardrailPolicy,
+        screeningUser.text,
+        'input',
+      );
       if (inputBlocked) {
         terminal = 'FAILED_GUARDRAIL';
         await failGuardrailBlocked('input', inputBlocked.categories);
@@ -439,9 +497,7 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
         conversationId: input.conversationId,
         sequence: i + 1,
         role: (m.role === 'assistant' ? 'assistant' : m.role === 'tool' ? 'tool' : 'user') as
-          | 'user'
-          | 'assistant'
-          | 'tool',
+          'user' | 'assistant' | 'tool',
         content: m.text,
         createdAt: new Date().toISOString(),
       })),
@@ -464,10 +520,11 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
         .map((m) => ({
           memoryId: m.memoryId,
           organizationId: input.organizationId,
-          scope: (m.scope === 'user' ? 'user' : m.scope === 'organization' ? 'organization' : 'conversation') as
-            | 'user'
-            | 'conversation'
-            | 'organization',
+          scope: (m.scope === 'user'
+            ? 'user'
+            : m.scope === 'organization'
+              ? 'organization'
+              : 'conversation') as 'user' | 'conversation' | 'organization',
           scopeId: m.scope === 'organization' ? input.organizationId : input.conversationId,
           content: m.content ?? '',
           visibility: 'shared' as const,
@@ -493,14 +550,17 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
       availableTools: (manifest.tools ?? []).map((t) => ({
         toolId: t.name,
         version: '1.0.0',
-        inputSchema: t.inputSchemaJson ? (JSON.parse(t.inputSchemaJson) as Record<string, unknown>) : {},
+        inputSchema: t.inputSchemaJson
+          ? (JSON.parse(t.inputSchemaJson) as Record<string, unknown>)
+          : {},
         effectClass:
           t.effectClass === 'MUTATING'
             ? ('MUTATING' as const)
             : t.effectClass === 'DESTRUCTIVE'
               ? ('DESTRUCTIVE' as const)
               : ('READ_ONLY' as const),
-        approvalRequirement: t.approvalRequirement === 'REQUIRED' ? ('REQUIRED' as const) : ('NONE' as const),
+        approvalRequirement:
+          t.approvalRequirement === 'REQUIRED' ? ('REQUIRED' as const) : ('NONE' as const),
         egressClass: 'limited' as const,
         timeoutMs: 10_000,
         idempotency: 'supported' as const,
@@ -573,9 +633,19 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
         'request_human_handoff',
         async (args) => {
           const reasonArg = (args as { reason?: unknown }).reason;
-          const reason = typeof reasonArg === 'string' && reasonArg.trim() ? reasonArg : 'tool:request_human_handoff';
-          const res = (await client.requestHumanHandoff({ reason })) as { escalation_id?: string; state?: string };
-          return { escalated: true, escalation_id: res.escalation_id ?? '', state: res.state ?? '' };
+          const reason =
+            typeof reasonArg === 'string' && reasonArg.trim()
+              ? reasonArg
+              : 'tool:request_human_handoff';
+          const res = (await client.requestHumanHandoff({ reason })) as {
+            escalation_id?: string;
+            state?: string;
+          };
+          return {
+            escalated: true,
+            escalation_id: res.escalation_id ?? '',
+            state: res.state ?? '',
+          };
         },
       ],
       [
@@ -614,7 +684,11 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
           if (bytes.byteLength > 5 * 1024 * 1024) {
             return { error: 'generate_image output exceeds the 5 MiB attachment cap' };
           }
-          const artifact = (await client.putRunArtifact({ purpose: 'GENERATED_MEDIA', mediaType, data: bytes })) as {
+          const artifact = (await client.putRunArtifact({
+            purpose: 'GENERATED_MEDIA',
+            mediaType,
+            data: bytes,
+          })) as {
             artifact_id?: string;
             byte_length?: number;
           };
@@ -630,7 +704,12 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
               mediaType,
             }),
           ]);
-          return { generated: true, artifact_id: artifactId, media_type: mediaType, byte_length: artifact.byte_length ?? bytes.byteLength };
+          return {
+            generated: true,
+            artifact_id: artifactId,
+            media_type: mediaType,
+            byte_length: artifact.byte_length ?? bytes.byteLength,
+          };
         },
       ],
     ]);
@@ -638,7 +717,10 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
     // endpoints. The credential is disclosed per-run via the Engine's scoped
     // GetToolCredential op (never in the manifest); timeout + rate limits
     // come from the binding and the pinned tool policy.
-    const httpBindings = new Map<string, { url: string; method: string; timeoutMs: number; headerName: string }>();
+    const httpBindings = new Map<
+      string,
+      { url: string; method: string; timeoutMs: number; headerName: string }
+    >();
     for (const t of manifest.tools ?? []) {
       if (t.httpBinding && typeof t.httpBinding.url === 'string' && t.httpBinding.url) {
         httpBindings.set(t.name, {
@@ -692,11 +774,12 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
         manifestDescriptions.set(t.name, t.description);
       }
     }
-    const tools: Array<{ name: string; description: string; schema: unknown }> = compilerInput.availableTools.map((t) => ({
-      name: t.toolId,
-      description: manifestDescriptions.get(t.toolId) ?? t.toolId,
-      schema: t.inputSchema,
-    }));
+    const tools: Array<{ name: string; description: string; schema: unknown }> =
+      compilerInput.availableTools.map((t) => ({
+        name: t.toolId,
+        description: manifestDescriptions.get(t.toolId) ?? t.toolId,
+        schema: t.inputSchema,
+      }));
     const toolPolicies = new Map(compilerInput.availableTools.map((t) => [t.toolId, t]));
 
     // Provider conversation — tool results feed the next turn (FL-1.1).
@@ -724,7 +807,15 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
           purpose: 'CHECKPOINT',
           mediaType: 'application/json',
           data: Buffer.from(state, 'utf8'),
-        })) as { artifact?: { artifactId?: string; uri?: string; mediaType?: string; byteLength?: bigint | number; sha256?: Uint8Array } };
+        })) as {
+          artifact?: {
+            artifactId?: string;
+            uri?: string;
+            mediaType?: string;
+            byteLength?: bigint | number;
+            sha256?: Uint8Array;
+          };
+        };
         const art = put.artifact;
         if (!art || !art.artifactId || !art.uri) {
           return;
@@ -749,7 +840,10 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
     // FL-2.13 - oversized tool results: past the inline bound, the result is
     // written through the Engine claim-check and the tool message carries a
     // bounded ArtifactRef descriptor instead of raw content.
-    const maybeClaimCheck = async (toolCallId: string, entry: ToolTurnEntry): Promise<ToolTurnEntry> => {
+    const maybeClaimCheck = async (
+      toolCallId: string,
+      entry: ToolTurnEntry,
+    ): Promise<ToolTurnEntry> => {
       const text = JSON.stringify(entry.result ?? null);
       if (text.length <= TOOL_MESSAGE_MAX_CHARS) {
         return entry;
@@ -759,7 +853,9 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
           purpose: 'TOOL_RESULT',
           mediaType: 'application/json',
           data: Buffer.from(text, 'utf8'),
-        })) as { artifact?: { artifactId?: string; byteLength?: bigint | number; sha256?: Uint8Array } };
+        })) as {
+          artifact?: { artifactId?: string; byteLength?: bigint | number; sha256?: Uint8Array };
+        };
         const art = put.artifact;
         if (art && art.artifactId) {
           return {
@@ -811,7 +907,11 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
               totalCompletion?: number;
               toolCallsExecuted?: number;
             };
-            if (Array.isArray(parsed.messages) && parsed.messages.length > 0 && typeof parsed.turn === 'number') {
+            if (
+              Array.isArray(parsed.messages) &&
+              parsed.messages.length > 0 &&
+              typeof parsed.turn === 'number'
+            ) {
               messages.splice(0, messages.length, ...parsed.messages);
               resumeTurn = Math.max(0, Math.min(parsed.turn, MAX_TURNS));
               totalPrompt = Number(parsed.totalPrompt ?? 0);
@@ -827,7 +927,10 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
 
     const trimToolMessages = (): void => {
       const toolIdx = messages.map((m, i) => (m.role === 'tool' ? i : -1)).filter((i) => i >= 0);
-      const totalChars = messages.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : 0), 0);
+      const totalChars = messages.reduce(
+        (acc, m) => acc + (typeof m.content === 'string' ? m.content.length : 0),
+        0,
+      );
       if (toolIdx.length <= 2 || totalChars <= 24_000) {
         return;
       }
@@ -866,7 +969,12 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
       }
       try {
         const res = (await client.getRunArtifact({ artifactId: att.artifactId })) as {
-          artifact?: { organizationId?: string; runId?: string; purpose?: string; byteLength?: bigint | number };
+          artifact?: {
+            organizationId?: string;
+            runId?: string;
+            purpose?: string;
+            byteLength?: bigint | number;
+          };
           accessUrl?: string;
         };
         if (!res.accessUrl || !res.artifact) {
@@ -897,7 +1005,10 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
           await reject('sha256 mismatch');
           continue;
         }
-        fetchedImages.push({ mediaType: att.mediaType, dataBase64: Buffer.from(bytes).toString('base64') });
+        fetchedImages.push({
+          mediaType: att.mediaType,
+          dataBase64: Buffer.from(bytes).toString('base64'),
+        });
       } catch {
         await reject('fetch failed');
       }
@@ -918,8 +1029,6 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
         }
       }
     }
-
-
 
     /** Between-turn budget check — returns the breached dimension or null. */
     const budgetBreach = (): string | null => {
@@ -953,7 +1062,10 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
     }
 
     /** FL-1.4 — a blocked surface fails the run; content never reaches Engine. */
-    async function failGuardrailBlocked(direction: 'input' | 'output', categories: string[]): Promise<void> {
+    async function failGuardrailBlocked(
+      direction: 'input' | 'output',
+      categories: string[],
+    ): Promise<void> {
       await client.appendRunEvents([
         event(input, 'RunWarning', {
           kind: 'RunWarning',
@@ -978,7 +1090,12 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
       // Per-call budget counter — the run stops opening new tool effects
       // once the pinned max_tool_calls is spent.
       if (toolCallsExecuted >= maxToolCalls) {
-        return { tool_call_id: call.id, tool: call.name, status: 'FAILED', result: { error: 'BUDGET_EXHAUSTED', dimension: 'max_tool_calls' } };
+        return {
+          tool_call_id: call.id,
+          tool: call.name,
+          status: 'FAILED',
+          result: { error: 'BUDGET_EXHAUSTED', dimension: 'max_tool_calls' },
+        };
       }
       await client.authorizeToolCall({
         toolCallId: call.id,
@@ -1017,7 +1134,9 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
         tool_call_id: call.id,
         tool: call.name,
         status: res.success ? 'EXECUTED' : 'FAILED',
-        result: res.success ? res.result : { error: res.errorCode ?? 'TOOL_FAILED', detail: res.result },
+        result: res.success
+          ? res.result
+          : { error: res.errorCode ?? 'TOOL_FAILED', detail: res.result },
       };
       if (JSON.stringify(res.result ?? null).length > TOOL_MESSAGE_MAX_CHARS) {
         // FL-2.13 — claim-check the oversized result through the Engine.
@@ -1103,7 +1222,12 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
               lastEmit = Date.now();
             }
           } else if (ev.type === 'tool-call') {
-            const raw = ev.toolCall as { id: string; name: string; args?: unknown; argsJson?: string | undefined };
+            const raw = ev.toolCall as {
+              id: string;
+              name: string;
+              args?: unknown;
+              argsJson?: string | undefined;
+            };
             toolCalls.push({
               id: raw.id,
               name: raw.name,
@@ -1182,7 +1306,8 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
         // Approval subset — one decision check per call; a still-pending
         // approval parks the WHOLE turn (deterministic re-drive replays it;
         // Engine toolEffects dedup makes replays safe).
-        const pendingApprovals: Array<{ call: (typeof allowlisted)[number]; approvalId: string }> = [];
+        const pendingApprovals: Array<{ call: (typeof allowlisted)[number]; approvalId: string }> =
+          [];
         for (const call of allowlisted) {
           const descriptor = toolPolicies.get(call.name);
           if (descriptor?.approvalRequirement !== 'REQUIRED') continue;
@@ -1235,8 +1360,12 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
         const runnable = allowlisted.filter((c) => !entries.has(c.id));
         // Wave 1 — READ_ONLY calls run concurrently; wave 2 — MUTATING/
         // DESTRUCTIVE calls serialize in proposal order (effect policy).
-        const readOnly = runnable.filter((c) => toolPolicies.get(c.name)?.effectClass === 'READ_ONLY');
-        const mutating = runnable.filter((c) => toolPolicies.get(c.name)?.effectClass !== 'READ_ONLY');
+        const readOnly = runnable.filter(
+          (c) => toolPolicies.get(c.name)?.effectClass === 'READ_ONLY',
+        );
+        const mutating = runnable.filter(
+          (c) => toolPolicies.get(c.name)?.effectClass !== 'READ_ONLY',
+        );
         const readOnlyResults = await Promise.all(
           readOnly.map((call, i) => {
             const stepId = `${input.runId}:t${turn}:r${i}`;
@@ -1316,7 +1445,12 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
     }
 
     // FL-1.4 — assistant output screening before the terminal commit.
-    const outputBlocked = await moderateContent(moderationHook, guardrailPolicy, resultText, 'output');
+    const outputBlocked = await moderateContent(
+      moderationHook,
+      guardrailPolicy,
+      resultText,
+      'output',
+    );
     if (outputBlocked) {
       terminal = 'FAILED_GUARDRAIL';
       await failGuardrailBlocked('output', outputBlocked.categories);
@@ -1349,7 +1483,13 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
               name: 'followups',
               schema: {
                 type: 'object',
-                properties: { questions: { type: 'array', items: { type: 'string', maxLength: 200 }, maxItems: 3 } },
+                properties: {
+                  questions: {
+                    type: 'array',
+                    items: { type: 'string', maxLength: 200 },
+                    maxItems: 3,
+                  },
+                },
                 required: ['questions'],
                 additionalProperties: false,
               },
@@ -1357,7 +1497,8 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
           },
           { signal: controller.signal },
         );
-        const questions = (followupRes.structuredOutput as { questions?: unknown } | undefined)?.questions;
+        const questions = (followupRes.structuredOutput as { questions?: unknown } | undefined)
+          ?.questions;
         if (Array.isArray(questions)) {
           suggestedFollowups = questions
             .filter((q): q is string => typeof q === 'string')
@@ -1427,5 +1568,5 @@ export function createInlineExecutor(deps: InlineExecutorDeps) {
       // Lease expiry is the safety net.
     }
     return { resultText };
-  };
+  }
 }

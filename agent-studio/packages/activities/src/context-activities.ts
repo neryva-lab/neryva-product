@@ -18,14 +18,30 @@ interface ManifestLike {
   instructions?: string;
   allowedModels?: string[];
   conversationSummary?: string;
-  modelParams?: { temperature?: number; maxOutputTokens?: number; topP?: number; reasoningEffort?: string };
-  budgets?: { maxModelCalls?: number; maxToolCalls?: number; wallClockSeconds?: number; maxTotalTokens?: number; maxCostMicros?: number };
+  modelParams?: {
+    temperature?: number;
+    maxOutputTokens?: number;
+    topP?: number;
+    reasoningEffort?: string;
+  };
+  budgets?: {
+    maxModelCalls?: number;
+    maxToolCalls?: number;
+    wallClockSeconds?: number;
+    maxTotalTokens?: number;
+    maxCostMicros?: number;
+  };
   guardrailPolicy?: { inputPolicy?: string; outputPolicy?: string; piiRedaction?: boolean };
   recentMessages?: Array<{
     messageId: string;
     role: string;
     text: string;
-    attachments?: Array<{ artifactId: string; mediaType: string; byteLength: number; purpose?: string }>;
+    attachments?: Array<{
+      artifactId: string;
+      mediaType: string;
+      byteLength: number;
+      purpose?: string;
+    }>;
   }>;
   memories?: Array<{ memoryId: string; scope: string; content?: string }>;
   knowledgeRefs?: Array<{ documentId: string; chunkId: string; snippet?: string; title?: string }>;
@@ -41,7 +57,9 @@ interface ManifestLike {
 /** Build the immutable agent definition from the Engine-authorized manifest. */
 function definitionFromManifest(manifest: ManifestLike): AgentDefinitionV1 | undefined {
   const raw = {
-    agent_id: `agent-${String(manifest.assistantVersionId ?? 'unknown').toLowerCase().replace(/[^a-z0-9-]/g, '')}`,
+    agent_id: `agent-${String(manifest.assistantVersionId ?? 'unknown')
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '')}`,
     version: 1,
     schema_version: 'v1' as const,
     instructions:
@@ -64,7 +82,11 @@ function definitionFromManifest(manifest: ManifestLike): AgentDefinitionV1 | und
       max_context_tokens: 32000,
     },
     tools: [],
-    guardrails: { input_policy: 'default' as const, output_policy: 'default' as const, pii_redaction: true },
+    guardrails: {
+      input_policy: 'default' as const,
+      output_policy: 'default' as const,
+      pii_redaction: true,
+    },
     budget_policy: {
       max_model_calls: Number(manifest.budgets?.maxModelCalls ?? 16) || 16,
       max_tool_calls: Number(manifest.budgets?.maxToolCalls ?? 8),
@@ -99,13 +121,24 @@ export interface CompiledContextLegacy {
     description?: string | undefined;
     inputSchema?: Record<string, unknown> | undefined;
   }>;
-  budgets: { maxModelCalls: number; maxToolCalls: number; maxTurns: number; maxTotalTokens: number; wallClockSeconds: number };
+  budgets: {
+    maxModelCalls: number;
+    maxToolCalls: number;
+    maxTurns: number;
+    maxTotalTokens: number;
+    wallClockSeconds: number;
+  };
   citationRefs?: string[] | undefined;
   modelParams?: ManifestLike['modelParams'];
   allowedModels?: string[] | undefined;
   guardrailPolicy: { input_policy: string; output_policy: string };
   /** FL-1.6 — trigger message attachment metadata (bytes fetched via claim-check activity). */
-  triggerAttachments: Array<{ artifactId: string; mediaType: string; byteLength: number; sha256?: Uint8Array }>;
+  triggerAttachments: Array<{
+    artifactId: string;
+    mediaType: string;
+    byteLength: number;
+    sha256?: Uint8Array;
+  }>;
 }
 
 export function createContextActivities(client: NeryvaMcpClient) {
@@ -136,197 +169,228 @@ export function createContextActivities(client: NeryvaMcpClient) {
       }
     },
 
-  /**
-   * REAL context compilation (harness H0.3): fetch the Engine-authorized
-   * manifest, build the immutable definition, run the pure compiler, and
-   * return provider-ready inputs — instructions, history, summary, memory
-   * content, knowledge snippets, tool schemas, budgets, model params.
-   */
-  async compileContext(params: CompileContextParams): Promise<CompiledContextLegacy> {
-    heartbeat({ step: 'compileContext:start', runId: params.runId });
-    const ctx = (await mcp.getAuthorizedRunContext()) as { manifest?: ManifestLike };
-    const manifest = ctx.manifest ?? {};
-    const definition = definitionFromManifest(manifest);
-    if (!definition) {
-      throw new Error('DEFINITION_INVALID: manifest did not yield a valid agent definition');
-    }
-    const recent = manifest.recentMessages ?? [];
-    const lastUser = [...recent].reverse().find((m) => m.role === 'user');
-    const compilerInput: CompilerInput = {
-      organizationId: params.organizationId,
-      conversationId: manifest.conversationId ?? '',
-      runId: params.runId,
-      agentVersionId: params.agentVersionId,
-      agentDefinition: definition,
-      policySnapshot: {
-        organizationId: params.organizationId,
-        allowedModels: definition.model_policy.allowed_models,
-      },
-      history: recent.map((m, i) => ({
-        messageId: m.messageId,
+    /**
+     * REAL context compilation (harness H0.3): fetch the Engine-authorized
+     * manifest, build the immutable definition, run the pure compiler, and
+     * return provider-ready inputs — instructions, history, summary, memory
+     * content, knowledge snippets, tool schemas, budgets, model params.
+     */
+    async compileContext(params: CompileContextParams): Promise<CompiledContextLegacy> {
+      heartbeat({ step: 'compileContext:start', runId: params.runId });
+      const ctx = (await mcp.getAuthorizedRunContext()) as { manifest?: ManifestLike };
+      const manifest = ctx.manifest ?? {};
+      const definition = definitionFromManifest(manifest);
+      if (!definition) {
+        throw new Error('DEFINITION_INVALID: manifest did not yield a valid agent definition');
+      }
+      const recent = manifest.recentMessages ?? [];
+      const lastUser = [...recent].reverse().find((m) => m.role === 'user');
+      const compilerInput: CompilerInput = {
         organizationId: params.organizationId,
         conversationId: manifest.conversationId ?? '',
-        sequence: i + 1,
-        role: (m.role === 'assistant' ? 'assistant' : m.role === 'tool' ? 'tool' : 'user') as
-          | 'user'
-          | 'assistant'
-          | 'tool',
-        content: m.text,
-        createdAt: new Date().toISOString(),
-      })),
-      summaries:
-        typeof manifest.conversationSummary === 'string' && manifest.conversationSummary
-          ? [
-              {
-                summaryId: manifest.conversationId ?? '',
-                organizationId: params.organizationId,
-                conversationId: manifest.conversationId ?? '',
-                sourceRange: { fromSequence: 0, toSequence: recent.length },
-                version: 1,
-                content: manifest.conversationSummary,
-                createdAt: new Date().toISOString(),
-              },
-            ]
-          : [],
-      memories: (manifest.memories ?? [])
-        .filter((m) => typeof m.content === 'string' && m.content)
-        .map((m) => ({
-          memoryId: m.memoryId,
+        runId: params.runId,
+        agentVersionId: params.agentVersionId,
+        agentDefinition: definition,
+        policySnapshot: {
           organizationId: params.organizationId,
-          scope: (m.scope === 'user' ? 'user' : m.scope === 'organization' ? 'organization' : 'conversation') as
-            | 'user'
-            | 'conversation'
-            | 'organization',
-          scopeId: m.scope === 'organization' ? params.organizationId : manifest.conversationId ?? '',
-          content: m.content ?? '',
-          visibility: 'shared' as const,
-          status: 'APPROVED' as const,
-          createdAt: new Date().toISOString(),
-          version: 1,
-        })),
-      knowledge: (manifest.knowledgeRefs ?? [])
-        .filter((k) => typeof k.snippet === 'string' && k.snippet)
-        .map((k) => ({
-          sourceId: k.documentId,
-          documentVersionId: k.documentId,
-          chunkId: k.chunkId,
+          allowedModels: definition.model_policy.allowed_models,
+        },
+        history: recent.map((m, i) => ({
+          messageId: m.messageId,
           organizationId: params.organizationId,
-          title: k.title,
-          content: k.snippet ?? '',
-          citation: `doc:${k.documentId}#chunk:${k.chunkId}`,
-          status: 'READY' as const,
+          conversationId: manifest.conversationId ?? '',
+          sequence: i + 1,
+          role: (m.role === 'assistant' ? 'assistant' : m.role === 'tool' ? 'tool' : 'user') as
+            'user' | 'assistant' | 'tool',
+          content: m.text,
           createdAt: new Date().toISOString(),
-          version: 1,
         })),
-      availableTools: (manifest.tools ?? []).map((t) => ({
-        toolId: t.name,
-        version: '1.0.0',
-        inputSchema: t.inputSchemaJson ? (JSON.parse(t.inputSchemaJson) as Record<string, unknown>) : {},
-        effectClass:
-          t.effectClass === 'MUTATING'
-            ? ('MUTATING' as const)
-            : t.effectClass === 'DESTRUCTIVE'
-              ? ('DESTRUCTIVE' as const)
-              : ('READ_ONLY' as const),
-        approvalRequirement: t.approvalRequirement === 'REQUIRED' ? ('REQUIRED' as const) : ('NONE' as const),
-        egressClass: 'limited' as const,
-        timeoutMs: 10_000,
-        idempotency: 'supported' as const,
-        redactionPolicy: 'strict' as const,
-        auditEventType: `tool.${t.name}`,
-        executionMode: 'in-process' as const,
-      })),
-      maxContextTokens: definition.context_policy.max_context_tokens,
-      maxOutputTokens: definition.model_policy.max_output_tokens,
-      userMessage: { content: lastUser?.text ?? '', sequence: recent.length },
-    };
-    const compiled = compileContextAsPure(compilerInput, { strict: false, now: new Date() });
-    heartbeat({ step: 'compileContext:done', runId: params.runId, toolCount: manifest.tools?.length ?? 0 });
-    return {
-      runId: params.runId,
-      organizationId: params.organizationId,
-      agentVersionId: params.agentVersionId,
-      messages: compiled.providerRequest.messages as unknown as Array<{ role: string; content: string }>,
-      tools: (manifest.tools ?? []).map((t) => ({
-        name: t.name,
-        version: '1.0.0',
-        effectClass:
-          t.effectClass === 'MUTATING' ? ('MUTATING' as const) : t.effectClass === 'DESTRUCTIVE' ? ('DESTRUCTIVE' as const) : ('READ_ONLY' as const),
-        approvalRequirement: t.approvalRequirement === 'REQUIRED' ? ('REQUIRED' as const) : ('NONE' as const),
-        description: t.description,
-        inputSchema: t.inputSchemaJson ? (JSON.parse(t.inputSchemaJson) as Record<string, unknown>) : {},
-      })),
-      budgets: {
-        maxModelCalls: Number(manifest.budgets?.maxModelCalls ?? 16) || 16,
-        maxToolCalls: Number(manifest.budgets?.maxToolCalls ?? 8),
-        maxTurns: 16,
-        maxTotalTokens: Number(manifest.budgets?.maxTotalTokens ?? 200_000) || 200_000,
-        wallClockSeconds: Number(manifest.budgets?.wallClockSeconds ?? 0) || 0,
-      },
-      citationRefs: (manifest.knowledgeRefs ?? []).map((k) => `doc:${k.documentId}#chunk:${k.chunkId}`),
-      modelParams: manifest.modelParams,
-      allowedModels: manifest.allowedModels ?? definition.model_policy.allowed_models,
-      guardrailPolicy: {
-        input_policy: manifest.guardrailPolicy?.inputPolicy ?? 'default',
-        output_policy: manifest.guardrailPolicy?.outputPolicy ?? 'default',
-      },
-      triggerAttachments: (([...recent].reverse().find((m) => m.role === 'user')?.attachments ?? []) as Array<{ artifactId: string; mediaType: string; byteLength: number; sha256?: Uint8Array }>).slice(0, 4),
-    };
-  },
+        summaries:
+          typeof manifest.conversationSummary === 'string' && manifest.conversationSummary
+            ? [
+                {
+                  summaryId: manifest.conversationId ?? '',
+                  organizationId: params.organizationId,
+                  conversationId: manifest.conversationId ?? '',
+                  sourceRange: { fromSequence: 0, toSequence: recent.length },
+                  version: 1,
+                  content: manifest.conversationSummary,
+                  createdAt: new Date().toISOString(),
+                },
+              ]
+            : [],
+        memories: (manifest.memories ?? [])
+          .filter((m) => typeof m.content === 'string' && m.content)
+          .map((m) => ({
+            memoryId: m.memoryId,
+            organizationId: params.organizationId,
+            scope: (m.scope === 'user'
+              ? 'user'
+              : m.scope === 'organization'
+                ? 'organization'
+                : 'conversation') as 'user' | 'conversation' | 'organization',
+            scopeId:
+              m.scope === 'organization' ? params.organizationId : (manifest.conversationId ?? ''),
+            content: m.content ?? '',
+            visibility: 'shared' as const,
+            status: 'APPROVED' as const,
+            createdAt: new Date().toISOString(),
+            version: 1,
+          })),
+        knowledge: (manifest.knowledgeRefs ?? [])
+          .filter((k) => typeof k.snippet === 'string' && k.snippet)
+          .map((k) => ({
+            sourceId: k.documentId,
+            documentVersionId: k.documentId,
+            chunkId: k.chunkId,
+            organizationId: params.organizationId,
+            title: k.title,
+            content: k.snippet ?? '',
+            citation: `doc:${k.documentId}#chunk:${k.chunkId}`,
+            status: 'READY' as const,
+            createdAt: new Date().toISOString(),
+            version: 1,
+          })),
+        availableTools: (manifest.tools ?? []).map((t) => ({
+          toolId: t.name,
+          version: '1.0.0',
+          inputSchema: t.inputSchemaJson
+            ? (JSON.parse(t.inputSchemaJson) as Record<string, unknown>)
+            : {},
+          effectClass:
+            t.effectClass === 'MUTATING'
+              ? ('MUTATING' as const)
+              : t.effectClass === 'DESTRUCTIVE'
+                ? ('DESTRUCTIVE' as const)
+                : ('READ_ONLY' as const),
+          approvalRequirement:
+            t.approvalRequirement === 'REQUIRED' ? ('REQUIRED' as const) : ('NONE' as const),
+          egressClass: 'limited' as const,
+          timeoutMs: 10_000,
+          idempotency: 'supported' as const,
+          redactionPolicy: 'strict' as const,
+          auditEventType: `tool.${t.name}`,
+          executionMode: 'in-process' as const,
+        })),
+        maxContextTokens: definition.context_policy.max_context_tokens,
+        maxOutputTokens: definition.model_policy.max_output_tokens,
+        userMessage: { content: lastUser?.text ?? '', sequence: recent.length },
+      };
+      const compiled = compileContextAsPure(compilerInput, { strict: false, now: new Date() });
+      heartbeat({
+        step: 'compileContext:done',
+        runId: params.runId,
+        toolCount: manifest.tools?.length ?? 0,
+      });
+      return {
+        runId: params.runId,
+        organizationId: params.organizationId,
+        agentVersionId: params.agentVersionId,
+        messages: compiled.providerRequest.messages as unknown as Array<{
+          role: string;
+          content: string;
+        }>,
+        tools: (manifest.tools ?? []).map((t) => ({
+          name: t.name,
+          version: '1.0.0',
+          effectClass:
+            t.effectClass === 'MUTATING'
+              ? ('MUTATING' as const)
+              : t.effectClass === 'DESTRUCTIVE'
+                ? ('DESTRUCTIVE' as const)
+                : ('READ_ONLY' as const),
+          approvalRequirement:
+            t.approvalRequirement === 'REQUIRED' ? ('REQUIRED' as const) : ('NONE' as const),
+          description: t.description,
+          inputSchema: t.inputSchemaJson
+            ? (JSON.parse(t.inputSchemaJson) as Record<string, unknown>)
+            : {},
+        })),
+        budgets: {
+          maxModelCalls: Number(manifest.budgets?.maxModelCalls ?? 16) || 16,
+          maxToolCalls: Number(manifest.budgets?.maxToolCalls ?? 8),
+          maxTurns: 16,
+          maxTotalTokens: Number(manifest.budgets?.maxTotalTokens ?? 200_000) || 200_000,
+          wallClockSeconds: Number(manifest.budgets?.wallClockSeconds ?? 0) || 0,
+        },
+        citationRefs: (manifest.knowledgeRefs ?? []).map(
+          (k) => `doc:${k.documentId}#chunk:${k.chunkId}`,
+        ),
+        modelParams: manifest.modelParams,
+        allowedModels: manifest.allowedModels ?? definition.model_policy.allowed_models,
+        guardrailPolicy: {
+          input_policy: manifest.guardrailPolicy?.inputPolicy ?? 'default',
+          output_policy: manifest.guardrailPolicy?.outputPolicy ?? 'default',
+        },
+        triggerAttachments: (
+          ([...recent].reverse().find((m) => m.role === 'user')?.attachments ?? []) as Array<{
+            artifactId: string;
+            mediaType: string;
+            byteLength: number;
+            sha256?: Uint8Array;
+          }>
+        ).slice(0, 4),
+      };
+    },
 
-  /**
-   * FL-1.6 — claim-check image fetch for the Temporal path. Engine
-   * re-authorizes per read (GetRunArtifact → presigned URL); this activity
-   * verifies size/checksum and returns base64 parts. Rejected attachments
-   * are dropped with a reason — the workflow decides what to do.
-   */
-  async fetchRunImages(params: {
-    attachments: Array<{ artifactId: string; mediaType: string; byteLength: number; sha256?: Uint8Array }>;
-  }): Promise<Array<{ artifactId: string; mediaType: string; dataBase64: string }>> {
-    const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
-    const MAX_BYTES = 5 * 1024 * 1024;
-    const { createHash } = await import('node:crypto');
-    const images: Array<{ artifactId: string; mediaType: string; dataBase64: string }> = [];
-    for (const att of params.attachments.slice(0, 4)) {
-      if (!IMAGE_TYPES.has(att.mediaType) || att.byteLength > MAX_BYTES) {
-        continue;
-      }
-      try {
-        const res = (await client.getRunArtifact({ artifactId: att.artifactId })) as {
-          accessUrl?: string;
-        };
-        if (!res.accessUrl) {
+    /**
+     * FL-1.6 — claim-check image fetch for the Temporal path. Engine
+     * re-authorizes per read (GetRunArtifact → presigned URL); this activity
+     * verifies size/checksum and returns base64 parts. Rejected attachments
+     * are dropped with a reason — the workflow decides what to do.
+     */
+    async fetchRunImages(params: {
+      attachments: Array<{
+        artifactId: string;
+        mediaType: string;
+        byteLength: number;
+        sha256?: Uint8Array;
+      }>;
+    }): Promise<Array<{ artifactId: string; mediaType: string; dataBase64: string }>> {
+      const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+      const MAX_BYTES = 5 * 1024 * 1024;
+      const { createHash } = await import('node:crypto');
+      const images: Array<{ artifactId: string; mediaType: string; dataBase64: string }> = [];
+      for (const att of params.attachments.slice(0, 4)) {
+        if (!IMAGE_TYPES.has(att.mediaType) || att.byteLength > MAX_BYTES) {
           continue;
         }
-        const imgRes = await fetch(res.accessUrl);
-        if (!imgRes.ok) {
-          continue;
-        }
-        const bytes = new Uint8Array(await imgRes.arrayBuffer());
-        if (bytes.byteLength !== att.byteLength) {
-          continue;
-        }
-        if (att.sha256 && att.sha256.length > 0) {
-          const digest = createHash('sha256').update(bytes).digest();
-          for (let i = 0; i < 32; i++) {
-            if (digest[i] !== att.sha256[i]) {
-              throw new Error(`artifact sha256 mismatch: ${att.artifactId}`);
+        try {
+          const res = (await client.getRunArtifact({ artifactId: att.artifactId })) as {
+            accessUrl?: string;
+          };
+          if (!res.accessUrl) {
+            continue;
+          }
+          const imgRes = await fetch(res.accessUrl);
+          if (!imgRes.ok) {
+            continue;
+          }
+          const bytes = new Uint8Array(await imgRes.arrayBuffer());
+          if (bytes.byteLength !== att.byteLength) {
+            continue;
+          }
+          if (att.sha256 && att.sha256.length > 0) {
+            const digest = createHash('sha256').update(bytes).digest();
+            for (let i = 0; i < 32; i++) {
+              if (digest[i] !== att.sha256[i]) {
+                throw new Error(`artifact sha256 mismatch: ${att.artifactId}`);
+              }
             }
           }
+          images.push({
+            artifactId: att.artifactId,
+            mediaType: att.mediaType,
+            dataBase64: Buffer.from(bytes).toString('base64'),
+          });
+        } catch {
+          continue;
         }
-        images.push({
-          artifactId: att.artifactId,
-          mediaType: att.mediaType,
-          dataBase64: Buffer.from(bytes).toString('base64'),
-        });
-      } catch {
-        continue;
       }
-    }
-    return images;
-  },
+      return images;
+    },
 
-  async validateScope(params: {
+    async validateScope(params: {
       organizationId: string;
       runId: string;
     }): Promise<{ ok: true } | { ok: false; reason: string }> {
