@@ -2,6 +2,23 @@
 
 **Status:** DECIDED (spike conclusion) · **Owner:** Agent Studio · **Date:** 2026-09-12
 
+## Wave 3 status correction (2026-09-23)
+
+The "Spike outcome" section below records intent, not landed code. As of this
+date, **neither `HttpSandboxExecutor` nor fail-closed `SANDBOX_UNCONFIGURED`
+exists in the codebase** (verified by grep). The current executor
+(`packages/tool-gateway/src/executors/sandbox.ts` →
+`executeInSimulatedSandbox`) is an **in-process simulation with no real
+isolation**: the handler runs in the same Node.js process with full host
+filesystem, network, and environment access; only a wall-clock timeout race
+(no cancellation), a static egress-allowlist presence check, a single-env-var
+ambient-credential check, and an audit record are enforced. Contrary to the
+spike outcome, `executionMode='sandbox'` tools do **not** fail closed without
+a backend — they silently execute in-process. Real isolation remains tracked
+debt: `TODO(owner: release loop)` — deploy an E2B-OSS/Daytona backend behind
+the HTTP contract below and implement the fail-closed behavior. Do not route
+genuinely untrusted code through `executionMode: 'sandbox'` until then.
+
 ## Decision
 
 Adopt **an HTTP sandbox-worker boundary** as the integration contract, with a self-hosted

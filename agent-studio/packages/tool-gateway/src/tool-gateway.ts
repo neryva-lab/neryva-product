@@ -27,7 +27,7 @@ import { redactResult } from './result-redaction.js';
 import type { ToolContext } from './tool-context.js';
 import { executeInProcess } from './executors/in-process.js';
 import { executeAsActivity } from './executors/activity.js';
-import { executeInSandbox } from './executors/sandbox.js';
+import { executeInSimulatedSandbox } from './executors/sandbox.js';
 import type { SecretProvider } from '@neryva/security';
 
 export interface ToolCallProposal {
@@ -343,7 +343,9 @@ export class ToolGateway {
 
     try {
       if (descriptor.executionMode === 'sandbox') {
-        const sandboxRes = await executeInSandbox(
+        // NOTE: simulated sandbox — no real isolation. See executors/sandbox.ts.
+        // TODO(owner: release loop): HttpSandboxExecutor + fail-closed SANDBOX_UNCONFIGURED per FL-2.11.
+        const sandboxRes = await executeInSimulatedSandbox(
           descriptor,
           argsCheck.data,
           context,
@@ -351,9 +353,7 @@ export class ToolGateway {
         );
         if (!sandboxRes.success) {
           success = false;
-          errorCode = sandboxRes.error?.includes('SANDBOX_ESCAPE')
-            ? 'SANDBOX_ESCAPE_DENIED'
-            : 'TOOL_FAILED';
+          errorCode = 'TOOL_FAILED';
           outcome = 'FAILED';
           rawResult = sandboxRes.error;
         } else {

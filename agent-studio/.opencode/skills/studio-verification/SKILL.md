@@ -77,7 +77,8 @@ audit record, dashboard).
 
 - Schema rejection, tenant/scope mismatch, approval requirement, credential scoping, egress policy
   (`infra/policies/network-egress/`), timeout/cancellation, duplicate execution (stable
-  `run_id+step_id`), lost-response/`UNKNOWN_OUTCOME` (`1016`), redaction/size limits, sandbox escape
+  `run_id+step_id`), lost-response/`UNKNOWN_OUTCOME` (`1016`), redaction/size limits, simulated-sandbox honesty bounds (Wave 3: the old pass-by-construction
+  escape-attempt test was deleted; the executor is simulated, not isolated)
 
 ### 7. Property, load, chaos (`agent_studio_implementation_plan.md:1518-1536`, `1553-1573`)
 

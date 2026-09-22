@@ -16,7 +16,7 @@ Policy boundary, not model convenience wrapper. Model proposes, Gateway authoriz
 - Editing
   `packages/tool-gateway/src/{tool-gateway,registry,schema-validation,effect-policy,approval-policy,idempotency,credentials,egress-policy,result-redaction,tool-context,executors/*}.ts`
   (`agent_studio_implementation_plan.md:231-254`)
-- Adding `apps/tool-worker/src/{worker,sandbox,config}.ts` for isolated execution
+- Adding `apps/tool-worker/src/{worker,sandbox,config}.ts` for simulated-isolation execution (current executor is in-process simulation; real backend = E2B/Daytona per FL-2.11)
 - Changing `contracts/tool/{descriptor,effect-policy}.ts` or handling
   `AuthorizeToolCall`/`RecordToolOutcome`/`CreateApprovalRequest`
 
@@ -77,7 +77,7 @@ mutating tool must have idempotent fake external system for tests (`1457`).
 - `in-process` only when code/deps trusted; `activity` for bounded external calls
 - `sandbox` / `tool-worker` for: customer-authored code, untrusted parsers/scripts, broad network
   clients, sensitive credentials, high CPU/memory or long-running tools (`1022-1026`)
-- Sandbox controls: workload identity, filesystem isolation, CPU/memory/time limits, restricted
+- Sandbox controls (TARGET for the real E2B/Daytona backend per FL-2.11; the current `executeInSimulatedSandbox` enforces only a timeout race, a static egress-allowlist presence check, one ambient-credential env check, and audit — no FS/network/CPU/mem isolation): workload identity, filesystem isolation, CPU/memory/time limits, restricted
   egress, no ambient credentials, complete audit correlation (`1028`, `584-596`)
 
 ### 6. Approval bridge (`agent_studio_implementation_plan.md:1102-1117`, `agent_studio_architecture.md:328-336`)
@@ -100,7 +100,7 @@ Tool Gateway determines approval required → Neryva MCP CreateApprovalRequest
 - `idempotency.test.ts` — duplicate delivery does not duplicate fake side effect; stable
   `run_id+step_id` keys
 - `approval.test.ts` — auditable, correlated to `tool_call_id/step_id`
-- `sandbox-boundary.test.ts` — escape attempts, egress policy, credential scoping
+- `simulated-sandbox.test.ts` — honesty lock-in: asserts what the simulated executor enforces AND what it does not (no FS/env isolation, no handler cancellation); the old pass-by-construction escape-attempt test was deleted in Wave 3
 
 ## Anti-patterns
 
