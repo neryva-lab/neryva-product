@@ -20,7 +20,7 @@ describe('10.11 On-call diagnose/replay/quarantine without DB', () => {
   };
 
   it('trace viewer + ListRunEvents via runtime-control internal (no DB)', async () => {
-    const server = await createServer(fakeConfig);
+    const server = await createServer({ config: fakeConfig });
     const svc = server.getControlService();
     // GetRun/ListRunEvents would be via MCP, not direct DB
     expect(svc).toHaveProperty('getProgress');
@@ -28,7 +28,7 @@ describe('10.11 On-call diagnose/replay/quarantine without DB', () => {
   });
 
   it('quarantining run without DB — via MCP FailRun', async () => {
-    const server = await createServer(fakeConfig);
+    const server = await createServer({ config: fakeConfig });
     const svc = server.getControlService();
     // Quarantine via audited control
     expect(svc).toHaveProperty('cancelRun');
