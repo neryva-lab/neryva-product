@@ -4,8 +4,8 @@
  * Runtime execution remains unimplemented until Phase 6; this is the read-only view.
  */
 
-import type { ToolDescriptor } from '../../../contracts/tool/descriptor.js';
-import { DEFAULT_TOOL_DESCRIPTORS } from '../../../contracts/tool/descriptor.js';
+import type { ToolDescriptor } from '@neryva/contracts/tool/descriptor';
+import { DEFAULT_TOOL_DESCRIPTORS } from '@neryva/contracts/tool/descriptor';
 
 export interface ToolRegistry {
   list(): ToolDescriptor[];

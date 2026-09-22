@@ -7,8 +7,8 @@
 import { createHash } from 'node:crypto';
 import { StudioError } from '@neryva/agent-kernel';
 import type { AgentDefinitionV1 } from './schema.js';
-import type { ToolDescriptor } from '../../../contracts/tool/descriptor.js';
-import { DEFAULT_TOOL_DESCRIPTORS } from '../../../contracts/tool/descriptor.js';
+import type { ToolDescriptor } from '@neryva/contracts/tool/descriptor';
+import { DEFAULT_TOOL_DESCRIPTORS } from '@neryva/contracts/tool/descriptor';
 
 export const COMPILER_VERSION = '1.0.0';
 

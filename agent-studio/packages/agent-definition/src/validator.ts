@@ -12,11 +12,11 @@ import {
   getToolDescriptor,
   DEFAULT_MODEL_CAPABILITIES,
 } from './capability-checker.js';
-import type { ToolDescriptor } from '../../../contracts/tool/descriptor.js';
+import type { ToolDescriptor } from '@neryva/contracts/tool/descriptor';
 import {
   DEFAULT_TOOL_DESCRIPTORS,
   PLATFORM_BUILT_IN_TOOLS,
-} from '../../../contracts/tool/descriptor.js';
+} from '@neryva/contracts/tool/descriptor';
 
 export type ValidationErrorCode =
   | 'UNKNOWN_CAPABILITY'

@@ -3,7 +3,7 @@
  * Source: agent_studio_architecture.md:406, agent_studio_implementation_plan.md:725-732
  */
 
-import type { ToolDescriptor } from '../../../contracts/tool/descriptor.js';
+import type { ToolDescriptor } from '@neryva/contracts/tool/descriptor';
 
 // Minimal capability registry for Phase 1 — in production, sourced from Model Gateway.
 // Extended 2026-09-13 (TPL-3.2): the original three IDs were stale
@@ -39,7 +39,7 @@ export function validateAllowedModels(
 }
 
 // Tool registry check — uses DEFAULT_TOOL_DESCRIPTORS from contracts/tool
-import { DEFAULT_TOOL_DESCRIPTORS } from '../../../contracts/tool/descriptor.js';
+import { DEFAULT_TOOL_DESCRIPTORS } from '@neryva/contracts/tool/descriptor';
 
 export function isKnownTool(
   toolName: string,
