@@ -3,7 +3,7 @@
  * Source: 10.2 308-314, 803, 1296-1322, 137-140
  */
 import { describe, it, expect } from 'vitest';
-import { InMemorySecretProvider } from '@neryva/security';
+import { InMemorySecretProvider, redactObject, createWorkloadIdentity } from '@neryva/security';
 
 describe('10.2 Secrets + encryption — rotation without downtime, no plaintext in logs', () => {
   it('secret via provider, not in .env value — resolve via ref', async () => {
@@ -13,11 +13,13 @@ describe('10.2 Secrets + encryption — rotation without downtime, no plaintext 
     expect(val).toBe('sk-openai-secret');
   });
 
-  it('no plaintext in workflow input/logs/definitions/capability claims (605) — redacted', async () => {
+  it('no plaintext in workflow input/logs/definitions/capability claims (605) — redacted via redactObject', async () => {
     const provider = new InMemorySecretProvider();
-    provider.set('openai-key', 'sk-secret-123', 'v1');
+    provider.set('openai-key', 'sk-live-abc123456789', 'v1');
     const secret = await provider.resolve({ ref: 'openai-key' });
-    const log = `workflow input: model=gpt-4o, apiKey=[REDACTED]`;
+    // Production path: redactObject strips sensitive fields before anything is logged or persisted.
+    const redacted = redactObject({ model: 'gpt-4o', prompt: `hello ${secret}`, credential: secret });
+    const log = `workflow input: ${JSON.stringify(redacted)}`;
     expect(log).not.toContain(secret);
     InMemorySecretProvider.assertNoPlaintextInLog(log, secret);
     // History would store ref, not value
@@ -39,21 +41,31 @@ describe('10.2 Secrets + encryption — rotation without downtime, no plaintext 
     expect(await provider.resolve({ ref: 'openai-key', version: 'v2' })).toBe('sk-v2');
   });
 
-  it('encrypted payload codec/claim-check — no plaintext in Temporal history', () => {
-    // Simulate payload codec would encrypt large prompt before persisting to Temporal
-    const secret = 'sk-litellm-virtual-key-xyz';
-    const payload = { model: 'gpt-4o', prompt: 'hello', apiKey: secret };
-    const redactedPayload = { ...payload, apiKey: '[REDACTED]' };
+  it('payload codec redacts sensitive fields — no plaintext in Temporal history', () => {
+    // Production path: sensitive fields are redacted before the payload codec persists to history.
+    const secret = 'sk-live-abc123456789';
+    const payload = { model: 'gpt-4o', prompt: 'hello', credential: secret };
+    const redactedPayload = redactObject(payload);
+    expect(redactedPayload.prompt).toBe('[REDACTED]');
+    expect(redactedPayload.credential).toBe('[REDACTED]');
     expect(JSON.stringify(redactedPayload)).not.toContain(secret);
   });
 
-  it('workload identity separation — runtime-worker only gets MCP + Temporal + assigned secret-manager creds', () => {
-    const workload = {
-      name: 'runtime-worker',
-      allowed: ['mcp:execution', 'temporal:namespace', 'secret:openai-key'],
-    };
-    expect(workload.allowed).not.toContain('billing:admin');
-    expect(workload.allowed).not.toContain('object-store:broad');
-    expect(workload.allowed).not.toContain('db:engine');
+  it('workload identity separation — runtime-worker gets only execution-plane methods + assigned secrets', () => {
+    const id = createWorkloadIdentity('runtime-worker', 'production');
+    expect(id.role).toBe('runtime-worker');
+    expect(id.environment).toBe('production');
+    const broad = /billing|admin|object-store|db:/i;
+    for (const method of id.allowedMcpMethods) {
+      expect(method, `workload method escaped its plane: ${method}`).not.toMatch(broad);
+    }
+    for (const ref of id.secretRefs) {
+      expect(ref, `workload secret ref too broad: ${ref}`).not.toMatch(/broad|\*/);
+    }
+    expect(id.secretRefs).toContain('openai/api-key');
+    // runtime-control is read-only: it must never gain commit/append methods.
+    const rc = createWorkloadIdentity('runtime-control', 'production');
+    expect(rc.allowedMcpMethods).not.toContain('CommitRunResult');
+    expect(rc.allowedMcpMethods).not.toContain('AppendRunEvents');
   });
 });

@@ -5,6 +5,8 @@
 import { describe, it, expect } from 'vitest';
 import { createServer } from '../../apps/runtime-control/src/server.js';
 import type { Config } from '../../apps/runtime-control/src/config.js';
+import { deriveWorkflowId } from '../../packages/workflows/src/workflow-state.js';
+import { PATCH_IDS, CURRENT_WORKFLOW_VERSION } from '../../packages/workflows/src/workflow-versioning.js';
 
 describe('10.11 On-call diagnose/replay/quarantine without DB', () => {
   const fakeConfig: Config = {
@@ -35,8 +37,14 @@ describe('10.11 On-call diagnose/replay/quarantine without DB', () => {
     await server.close();
   });
 
-  it('replay debugging — workflow history via Temporal, not direct DB', () => {
-    const replaySupported = true;
-    expect(replaySupported).toBe(true);
+  it('replay debugging — deterministic workflow id + version markers let on-call replay history without DB', () => {
+    // On-call replays a recorded history through the deterministic workflow bundle:
+    // the replay targets the same workflow id, and PATCH_IDS version markers
+    // keep old histories replayable after deploys.
+    const runId = '0192f2e2-7d7b-7b3a-8b3a-123456789abc';
+    expect(deriveWorkflowId(runId)).toBe(deriveWorkflowId(runId));
+    expect(deriveWorkflowId(runId)).toBe(`agent-run::${runId}`);
+    expect(PATCH_IDS.CONTINUE_AS_NEW_V2).toBe('continue-as-new-v2');
+    expect(CURRENT_WORKFLOW_VERSION).toBe('agent-run-v1');
   });
 });

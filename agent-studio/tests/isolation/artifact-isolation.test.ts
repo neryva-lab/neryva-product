@@ -51,19 +51,4 @@ describe('artifact + cache + vector isolation', () => {
       /tamper|denied/,
     );
   });
-
-  it('support/admin access is separately audited — cannot masquerade as customer principal', () => {
-    const supportActor = { actorId: 'support_operator', role: 'support' };
-    const customerScope = { organizationId: 'org_A', runId: 'run1' };
-    // Support must use explicit support permissions, not customer principalId
-    expect(supportActor.actorId).not.toBe(customerScope.organizationId);
-    // Auditing would log support access separately
-    const audit = {
-      actor: supportActor.actorId,
-      action: 'GetRun',
-      scope: customerScope,
-      audited: true,
-    };
-    expect(audit.audited).toBe(true);
-  });
 });

@@ -12,6 +12,7 @@ import { join } from 'node:path';
 
 import { deriveWorkflowId, isWorkflowInputBounded } from '../src/workflow-state.js';
 import { PATCH_IDS, CURRENT_WORKFLOW_VERSION } from '../src/workflow-versioning.js';
+import { deriveToolIdempotencyKey } from '@neryva/tool-gateway';
 
 describe('workflow replay', () => {
   it('deriveWorkflowId is deterministic (one workflow per runId, no duplicate)', () => {
@@ -82,15 +83,20 @@ describe('workflow replay', () => {
   });
 
   it('simulated worker crash during replay does not duplicate business effect', () => {
-    // Gating: workflow is deterministic, crash at activity boundary resumes via Temporal replay
-    // This unit test proves idempotency key stability — duplicate delivery with same key returns same effect
-    const runId = '0192f2e2-7d7b-7b3a-8b3a-123456789abc';
-    const stepId = `${runId}#1#model/1`;
-    const toolVersion = 'v1';
-    // deriveStableKey is idempotent — second call same input → same key
-    const raw = `${runId}:${stepId}:${toolVersion}`;
-    const key1 = raw; // tool gateway derives via sha256 hex — deterministic
-    const key2 = raw;
+    // Gating: workflow is deterministic, crash at activity boundary resumes via Temporal replay.
+    // This unit test proves idempotency key stability with the real derivation:
+    // duplicate delivery with the same key returns the same effect.
+    const params = {
+      runId: '0192f2e2-7d7b-7b3a-8b3a-123456789abc',
+      stepId: '0192f2e2-7d7b-7b3a-8b3a-123456789abc#1#model/1',
+      toolId: 'create_ticket',
+      toolVersion: 'v1',
+    };
+    const key1 = deriveToolIdempotencyKey(params);
+    const key2 = deriveToolIdempotencyKey(params);
     expect(key1).toBe(key2);
+    expect(key1).toMatch(/^[a-f0-9]{64}$/);
+    // A different step derives a different key — no cross-step dedup collision.
+    expect(deriveToolIdempotencyKey({ ...params, stepId: 'other-step' })).not.toBe(key1);
   });
 });

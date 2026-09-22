@@ -20,8 +20,9 @@ describe('redaction', () => {
     // document is sensitive, so redacted not truncated
     expect(out.document).toBe('[REDACTED]');
     const out2 = redactObject({ other: big } as any);
-    // other is not sensitive, but large — our redactValue truncates >1000 for non-sensitive?
-    // Actually redactValue checks sensitive first, then length
-    expect(typeof out2.other).toBe('string');
+    // 'other' is not sensitive, but >1000 chars — redactValue truncates with the byte count
+    expect(out2.other).toBe('[TRUNCATED 2000B]');
+    // short non-sensitive strings pass through untouched
+    expect(redactObject({ other: 'small' }).other).toBe('small');
   });
 });
