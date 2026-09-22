@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: agent-studio/pnpm-lock.yaml
+
+      # The MCP contract package provides the `buf` binary used by
+      # generate:check, so it must be installed first.
+      - name: Install dependencies (neryva-mcp-contract)
+        working-directory: neryva_mcp/neryva-mcp-contract
+        run: pnpm install
+
+      - name: Install dependencies (agent-studio)
+        working-directory: agent-studio
+        run: pnpm install
+
+      # generate:check re-runs `buf generate`, which pulls remote plugins
+      # (buf.build/bufbuild/es, buf.build/connectrpc/es) — this step needs
+      # network access to buf.build. That is fine on GitHub-hosted runners.
+      # It fails loudly if generation breaks or committed gen/ts is not
+      # byte-reproducible from proto/.
+      - name: Check generated MCP contract
+        working-directory: agent-studio
+        run: pnpm generate:check
+
+      - name: Typecheck
+        working-directory: agent-studio
+        run: pnpm typecheck
+
+      - name: Lint
+        working-directory: agent-studio
+        run: pnpm lint
+
+      - name: Unit tests
+        working-directory: agent-studio
+        run: pnpm test:unit
