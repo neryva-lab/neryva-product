@@ -106,7 +106,24 @@ export interface ToolExecutionResult {
 let gateway: ToolGateway | undefined;
 function getGateway(): ToolGateway {
   if (!gateway) {
-    const registry = new InMemoryToolRegistry([...DEFAULT_TOOL_DESCRIPTORS]);
+    // SMOKE-ONLY substitution (Wave 4 happy-path smoke): force named tools
+    // through the SIMULATED sandbox executor instead of their default
+    // executionMode. The real sandbox backend does not exist (Wave 3 proved
+    // the sandbox simulated-only); without this override the temporal path
+    // runs every tool as a plain activity. Named in smoke evidence as a
+    // substitution — never a production default. Unset (or empty)
+    // NERYVA_SMOKE_SANDBOX_TOOLS disables it entirely.
+    const sandboxTools = (process.env.NERYVA_SMOKE_SANDBOX_TOOLS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const descriptors =
+      sandboxTools.length > 0
+        ? DEFAULT_TOOL_DESCRIPTORS.map((d) =>
+            sandboxTools.includes(d.toolId) ? { ...d, executionMode: 'sandbox' as const } : d,
+          )
+        : [...DEFAULT_TOOL_DESCRIPTORS];
+    const registry = new InMemoryToolRegistry(descriptors);
     gateway = new ToolGateway(registry);
   }
   return gateway;

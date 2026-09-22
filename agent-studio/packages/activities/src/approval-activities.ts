@@ -58,6 +58,24 @@ export function createApprovalActivities(client: NeryvaMcpClient) {
       return { approvalId: req.approvalId };
     },
 
+    /**
+     * getApprovalState — durable read of the Engine's approval decision.
+     * The temporal workflow polls this while parked on an approval-required
+     * tool call (waitForApprovalDecision): the ApprovalDecision Temporal
+     * signal is never delivered end-to-end, so the workflow observes the
+     * durable decision directly — the same source the inline executor uses
+     * (see apps/runtime-control/src/inline-executor.ts) and the behaviour
+     * the Engine's run-dispatch consumer documents ("the fresh executor
+     * observes the durable decision via GetApprovalState").
+     */
+    async getApprovalState(params: { approvalRef: string }): Promise<{ state?: string }> {
+      heartbeat({ step: 'getApprovalState', approvalRef: params.approvalRef });
+      const res = (await client.getApprovalState({ approvalRef: params.approvalRef })) as {
+        state?: string;
+      } | null;
+      return { state: res?.state ?? 'NOT_FOUND' };
+    },
+
     async recordApprovalDecision(decision: ApprovalDecision): Promise<void> {
       heartbeat({
         step: 'recordApprovalDecision',

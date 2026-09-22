@@ -179,6 +179,12 @@ type ApprovalActivities = {
     stepId: string;
     toolName: string;
   }): Promise<{ approvalId: string }>;
+  /**
+   * Durable read of the Engine's approval decision (GetApprovalState).
+   * The workflow polls this while parked on an approval-required call —
+   * see waitForApprovalDecision.
+   */
+  getApprovalState(params: { approvalRef: string }): Promise<{ state?: string }>;
 };
 
 type GuardrailActivities = {
@@ -306,7 +312,7 @@ const { executeTool } = proxyActivities<ToolActivities>({
   },
 });
 
-const { createApprovalRequest } = proxyActivities<ApprovalActivities>({
+const { createApprovalRequest, getApprovalState } = proxyActivities<ApprovalActivities>({
   scheduleToStartTimeout: '10s',
   startToCloseTimeout: '15s',
   retry: {
@@ -509,6 +515,18 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
    * Durable wait for ONE approval decision — survives restart, cancel
    * propagates Engine→Studio→Temporal→tool. Used by the multi-call approval
    * path (FL-1.1 lockstep): one wait per approval-required call.
+   *
+   * REL-11.4 fix (Wave 4 smoke): the Engine never delivers the
+   * ApprovalDecision Temporal signal — no component calls DeliverRunInput,
+   * and runtime-control's deliverRunInput signals 'DeliverRunInput', which no
+   * workflow handles — so a signal-only wait never resolves and an approved
+   * run stays parked until the 30-day bound. The wait now ALSO polls the
+   * Engine's durable decision via GetApprovalState: the same source the
+   * inline executor already uses (apps/runtime-control/src/inline-executor.ts)
+   * and the behaviour the Engine's run-dispatch consumer documents ("the
+   * fresh executor observes the durable decision via GetApprovalState").
+   * EXPIRED is treated as a denial: the side effect must not execute after
+   * its decision window closes.
    */
   async function waitForApprovalDecision(approvalId: string): Promise<QueuedSignal | undefined> {
     const drained = progress.pendingSignals.find(
@@ -529,7 +547,47 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       resolve: resolver,
       promise,
     } as never);
-    // Race between approval and cancellation — 30-day durable timer bound
+    const settleFromPoll = (decision: 'APPROVED' | 'DENIED'): void => {
+      const pending = pendingApprovals.get(approvalId);
+      if (!pending) return; // already settled — signal won, cancelled, or timed out
+      pendingApprovals.delete(approvalId);
+      logicalClock += 1;
+      pending.resolve({
+        signalId: approvalId,
+        kind: 'APPROVAL',
+        approvalId,
+        decision,
+        receivedAtMs: logicalClock,
+      } as QueuedSignal);
+    };
+    // Durable poll of the Engine decision. Detached (not awaited): the race
+    // below owns the wait's lifetime; the loop exits on its own once the
+    // entry is settled (the condition wakes it). Never awaited after the
+    // race — that would block on an in-flight activity after the wait
+    // already resolved.
+    const poll = (async (): Promise<void> => {
+      while (pendingApprovals.has(approvalId) && !cancelRequested) {
+        let state: string;
+        try {
+          const res = await getApprovalState({ approvalRef: approvalId });
+          state = res.state ?? 'NOT_FOUND';
+        } catch {
+          state = 'NOT_FOUND'; // transient MCP failure — retry next tick
+        }
+        if (state === 'APPROVED') {
+          settleFromPoll('APPROVED');
+          return;
+        }
+        if (state === 'DENIED' || state === 'EXPIRED') {
+          settleFromPoll('DENIED');
+          return;
+        }
+        // Cancellable sleep — wakes early when the entry settles.
+        await condition(() => !pendingApprovals.has(approvalId) || !!cancelRequested, '10s');
+      }
+    })();
+    // Race between approval (signal or durable poll) and cancellation —
+    // 30-day durable timer bound
     const arrived = await Promise.race([
       promise,
       condition(() => !!cancelRequested, '30 days').then(
@@ -537,6 +595,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       ),
     ]);
     pendingApprovals.delete(approvalId);
+    void poll;
     return arrived as QueuedSignal | undefined;
   }
 
