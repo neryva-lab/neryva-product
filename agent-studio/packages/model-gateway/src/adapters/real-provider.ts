@@ -23,8 +23,13 @@ type LanguageModel = unknown;
 
 export interface RealProviderConfig {
   providerId: string;
-  /** Build the AI SDK language model for a model id — created per call so key rotation works */
-  createModel: (modelId: string, apiKey: string) => LanguageModel;
+  /**
+   * Build the AI SDK language model for a model id — created per call so key
+   * rotation works. May be async (provider SDKs are dynamically imported);
+   * callers MUST await it — passing the bare Promise to generateText/streamText
+   * fails at runtime ("Unsupported model version").
+   */
+  createModel: (modelId: string, apiKey: string) => LanguageModel | Promise<LanguageModel>;
   apiKey: string | (() => Promise<string>);
 }
 
@@ -73,7 +78,7 @@ export async function realGenerate(
 ): Promise<NeryvaModelResponse> {
   const { generateText, generateObject, jsonSchema } = await loadAiModule();
   const apiKey = await resolveKey(cfg);
-  const model = cfg.createModel(request.model, apiKey);
+  const model = await cfg.createModel(request.model, apiKey);
   const signal = callOpts?.signal;
 
   try {
@@ -181,7 +186,7 @@ export async function realStream(
 ): Promise<NeryvaStreamResult> {
   const { streamText, jsonSchema } = await loadAiModule();
   const apiKey = await resolveKey(cfg);
-  const model = cfg.createModel(request.model, apiKey);
+  const model = await cfg.createModel(request.model, apiKey);
   const signal = callOpts?.signal;
 
   let finalResponse: NeryvaModelResponse | undefined;

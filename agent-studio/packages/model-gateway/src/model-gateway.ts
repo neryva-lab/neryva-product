@@ -14,7 +14,7 @@ import type { NeryvaModelCapabilities } from './capabilities.js';
 import { GLOBAL_CAPABILITY_REGISTRY } from './capabilities.js';
 import type { CapabilityRegistry } from './capabilities.js';
 import { createCatalog, type ModelCatalog, type PolicySnapshot } from './model-catalog.js';
-import { routeModel } from './routing.js';
+import { routeModel, type RouteResult } from './routing.js';
 import type { ProviderAdapter } from './providers/provider.js';
 import { createOpenAIAdapter } from './providers/openai.js';
 import { createAnthropicAdapter } from './providers/anthropic.js';
@@ -138,6 +138,74 @@ export class ModelGateway {
     throw new Error(`no adapter for provider ${providerId}`);
   }
 
+  /**
+   * Production wiring (allowTestCredentials:false + secretProvider) builds adapters
+   * lazily in ensureAdapter — but routeModel skips candidates with no pre-existing
+   * healthy adapter, so without pre-warming NO production call could ever route
+   * (every callModel threw NOT_FOUND before any credential was resolved).
+   * Materialize the candidate providers' adapters so routing's health check sees
+   * them. A provider whose adapter cannot be built (missing/revoked credential, no
+   * factory) keeps its adapter absent so routing can still consider fallbacks; its
+   * error is returned so the caller can prefer it over a generic NOT_FOUND when
+   * nothing routes.
+   */
+  private async prewarmCandidateAdapters(
+    modelIds: Array<string | undefined>,
+  ): Promise<Map<string, Error>> {
+    const failures = new Map<string, Error>();
+    const seen = new Set<string>();
+    for (const modelId of modelIds) {
+      if (!modelId) continue;
+      const cap = this.registry.get(modelId);
+      if (!cap || seen.has(cap.providerId) || this.adapters.has(cap.providerId)) continue;
+      seen.add(cap.providerId);
+      try {
+        await this.ensureAdapter(cap.providerId);
+      } catch (e) {
+        failures.set(cap.providerId, e as Error);
+      }
+    }
+    return failures;
+  }
+
+  /**
+   * Route with pre-warmed adapters. When routing finds no candidate AND the
+   * requested model's provider failed adapter materialization (e.g. its
+   * credential is missing/revoked), throw that actionable error instead of a
+   * generic NOT_FOUND — a loud fail-closed, never a silent one.
+   */
+  private routeWithPrewarmedAdapters(
+    requestedModel: string | undefined,
+    fallbackModels: string[] | undefined,
+    fallbackEnabled: boolean | undefined,
+    snapshot: PolicySnapshot,
+    adapterFailures: Map<string, Error>,
+  ): RouteResult {
+    try {
+      return routeModel({
+        request: {
+          requestedModel: requestedModel ?? '',
+          fallbackModels,
+          policySnapshot: snapshot,
+          fallbackEnabled,
+        },
+        catalog: this.catalog,
+        adapters: this.adapters,
+        registry: this.registry,
+      });
+    } catch (e) {
+      if (isProviderError(e) && e.code === 'NOT_FOUND') {
+        const requestedProvider = requestedModel
+          ? this.registry.get(requestedModel)?.providerId
+          : undefined;
+        const materializationError =
+          requestedProvider !== undefined ? adapterFailures.get(requestedProvider) : undefined;
+        if (materializationError) throw materializationError;
+      }
+      throw e;
+    }
+  }
+
   /** Main generate entry — routing + invocation + usage via caller (activities will RecordUsage via MCP) */
   async generate(
     gatewayRequest: NeryvaModelRequest & {
@@ -157,17 +225,20 @@ export class ModelGateway {
       organizationId: modelRequest.organizationId ?? 'unknown',
       allowedModels: [],
     };
-    const route = routeModel({
-      request: {
-        requestedModel: modelRequest.model,
-        fallbackModels,
-        policySnapshot: snapshot,
-        fallbackEnabled,
-      },
-      catalog: this.catalog,
-      adapters: this.adapters,
-      registry: this.registry,
-    });
+    // Production builds adapters lazily (allowTestCredentials:false) — materialize
+    // the candidates' providers BEFORE routing, otherwise routing's health check
+    // skips every candidate and no production call can ever route.
+    const adapterFailures = await this.prewarmCandidateAdapters([
+      modelRequest.model,
+      ...(fallbackEnabled ? (fallbackModels ?? []) : []),
+    ]);
+    const route = this.routeWithPrewarmedAdapters(
+      modelRequest.model,
+      fallbackModels,
+      fallbackEnabled,
+      snapshot,
+      adapterFailures,
+    );
 
     // Ensure adapter has credential (lazy)
     const adapter = await this.ensureAdapter(route.adapter.providerId);
@@ -223,17 +294,20 @@ export class ModelGateway {
       organizationId: modelRequest.organizationId ?? 'unknown',
       allowedModels: [],
     };
-    const route = routeModel({
-      request: {
-        requestedModel: modelRequest.model,
-        fallbackModels,
-        policySnapshot: snapshot,
-        fallbackEnabled,
-      },
-      catalog: this.catalog,
-      adapters: this.adapters,
-      registry: this.registry,
-    });
+    // Production builds adapters lazily (allowTestCredentials:false) — materialize
+    // the candidates' providers BEFORE routing, otherwise routing's health check
+    // skips every candidate and no production call can ever route.
+    const adapterFailures = await this.prewarmCandidateAdapters([
+      modelRequest.model,
+      ...(fallbackEnabled ? (fallbackModels ?? []) : []),
+    ]);
+    const route = this.routeWithPrewarmedAdapters(
+      modelRequest.model,
+      fallbackModels,
+      fallbackEnabled,
+      snapshot,
+      adapterFailures,
+    );
     const adapter = await this.ensureAdapter(route.adapter.providerId);
     return adapter.stream({ ...modelRequest, model: route.modelId }, callOpts);
   }
