@@ -43,7 +43,7 @@ flags.
 
 ```
 agent-studio/  # implementation root: <neryva-repo>/products/agent-studio/
-├── package.json, pnpm-workspace.yaml, tsconfig.base.json, vitest.workspace.ts
+├── package.json, pnpm-workspace.yaml, tsconfig.base.json, vitest.config.ts (test.projects)
 ├── apps/
 │   ├── runtime-worker/    # Temporal workflows + activities (primary)
 │   ├── runtime-control/   # internal health/readiness/audited operator controls (stateless)
