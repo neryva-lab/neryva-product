@@ -25,7 +25,18 @@ describe('provider-format', () => {
     expect(res.request.messages[0]?.role).toBe('system');
     expect(res.request.messages[0]?.content).toBe('You are helpful');
     expect(res.request.messages[res.request.messages.length - 1]?.content).toBe('hello');
-    expect(res.request.tools?.length).toBe(2);
+    // 1:1 mapping — every descriptor becomes exactly one provider tool, no
+    // drops, no extras. (Count is derived from the registry, not hardcoded:
+    // TPL-3.2 added the platform built-ins to DEFAULT_TOOL_DESCRIPTORS, which
+    // broke the old literal expectation of 2.)
+    expect(res.request.tools?.length).toBe(DEFAULT_TOOL_DESCRIPTORS.length);
+    expect(res.diagnostics.toolCount).toBe(DEFAULT_TOOL_DESCRIPTORS.length);
+    // FL-2.15: deterministic ordering — sorted by toolId for a byte-stable
+    // provider prefix, independent of registry order.
+    const sortedIds = [...DEFAULT_TOOL_DESCRIPTORS]
+      .map((d) => d.toolId)
+      .sort((a, b) => a.localeCompare(b));
+    expect(res.request.tools?.map((t) => t.name)).toEqual(sortedIds);
   });
 
   it('includes summaries with source_range/version', () => {

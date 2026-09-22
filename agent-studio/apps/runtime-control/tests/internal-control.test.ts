@@ -38,6 +38,9 @@ describe('RuntimeControlService', () => {
       policySnapshotId: 'pol_1',
       idempotencyKey: 'idem_123',
       correlationId: 'corr_123',
+      // Engine-issued run-scoped capability: the schema refuses to start
+      // without one, so the test (acting as the Engine dispatcher) provides it.
+      capabilityToken: 'test-capability-token',
     };
     const first = await svc.startRun(input);
     expect(first.workflowId).toBe(deriveWorkflowId(input.runId));

@@ -29,7 +29,7 @@
     "test:chaos": "vitest run --workspace=vitest.workspace.ts --project=chaos",
     "test:watch": "vitest --workspace=vitest.workspace.ts",
     "check:generated": "pnpm run generate:check && pnpm run bundle:check",
-    "generate:check": "pnpm --filter @neryva/mcp-contract generate 2>/dev/null || echo \"[check] mcp-contract generate skipped (no contract workspace)\" && git diff --exit-code -- gen/ts 2>/dev/null || echo \"[check] gen/ts diff skipped\"",
+    "generate:check": "node scripts/check-generated-contract.mjs",
     "bundle:check": "node scripts/check-workflow-bundle.mjs",
     "check:dependencies": "node scripts/check-dependencies.mjs",
     "check:container": "node scripts/check-container.mjs",

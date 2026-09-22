@@ -4,6 +4,14 @@ node_modules/
 dist/
 coverage/
 gen/
+# Exception: the MCP contract's generated TypeScript is TRACKED. The
+# agent-studio workspace consumes @neryva/mcp-contract via a pnpm `file:`
+# dependency, which snapshots the package at install time — gitignored
+# gen/ts would silently vanish from the installed copy and break every
+# fresh-clone build. `pnpm check:generated` enforces
+# `buf generate && git diff --exit-code` on this path, so generated drift
+# fails loudly instead of rotting.
+!neryva_mcp/neryva-mcp-contract/gen/
 .tmp/
 .env
 .env.local

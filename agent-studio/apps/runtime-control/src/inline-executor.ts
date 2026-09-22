@@ -113,7 +113,11 @@ function buildCapability(input: InlineRunInput, config: Config): CapabilityToken
           keyId: claims.kid ?? config.mcpEndpoint,
         };
       }
-    } catch {}
+    } catch {
+      // Intentional: best-effort JWT decode only — a malformed token falls
+      // through to the safe default capability below (the Engine re-validates
+      // the token on every authority RPC, so this never grants anything).
+    }
   }
   return {
     capabilityId: input.capabilityId,
@@ -135,11 +139,6 @@ function transportFor(config: Config, override?: Transport | undefined, capabili
   if (!capabilityToken) return base;
   // Engine authority expects the JWT in Authorization: Bearer <token> (routes.ts:115).
   // Wrap the transport so every RPC carries it without touching per-call headers.
-  const authInterceptor = (next: (req: unknown) => Promise<unknown>) => async (req: unknown) => {
-    const r = req as { header: Headers };
-    try { r.header.set('authorization', `Bearer ${capabilityToken}`); } catch {}
-    return next(req);
-  };
   // createConnectTransport returns a Transport with an interceptor chain; we
   // re-wrap it with our auth interceptor by creating a new transport that
   // delegates with the header set. Simplest: use the transport's internal

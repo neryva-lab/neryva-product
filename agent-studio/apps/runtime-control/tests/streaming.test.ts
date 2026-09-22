@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createServer } from '../src/server.js';
+import { createServer, type CreateServerOptions } from '../src/server.js';
 import type { Config } from '../src/config.js';
 
 const fakeConfig: Config = {
@@ -16,7 +16,7 @@ const fakeConfig: Config = {
 
 describe('Engine streaming contract (8.4) — frontend subscribes to Engine, not Studio', () => {
   it('runtime-control is stateless health only, no customer streaming endpoint', async () => {
-    const server = await createServer(fakeConfig);
+    const server = await createServer({ config: fakeConfig });
     const svc = server.getControlService();
     // Should have only audited control methods, not stream
     expect(svc).toHaveProperty('startRun');
@@ -55,10 +55,10 @@ describe('Engine streaming contract (8.4) — frontend subscribes to Engine, not
       },
       async cancelWorkflow() {},
     };
-    const server = await createServer(
-      fakeConfig,
-      trackingTemporal as unknown as Parameters<typeof createServer>[1],
-    );
+    const server = await createServer({
+      config: fakeConfig,
+      temporal: trackingTemporal as unknown as CreateServerOptions['temporal'],
+    });
     const svc = server.getControlService();
     // startRun is idempotent, durable via Temporal workflowId
     const res1 = await svc.startRun({
@@ -69,6 +69,8 @@ describe('Engine streaming contract (8.4) — frontend subscribes to Engine, not
       policySnapshotId: 'policy_v1',
       idempotencyKey: 'idem_123',
       correlationId: 'corr_123',
+      // Engine-issued run-scoped capability (see internal-control.ts).
+      capabilityToken: 'test-capability-token',
     });
     const res2 = await svc.startRun({
       runId: '00000000-0000-7000-8000-000000000001',
@@ -78,6 +80,8 @@ describe('Engine streaming contract (8.4) — frontend subscribes to Engine, not
       policySnapshotId: 'policy_v1',
       idempotencyKey: 'idem_123',
       correlationId: 'corr_123',
+      // Engine-issued run-scoped capability (see internal-control.ts).
+      capabilityToken: 'test-capability-token',
     });
     expect(res1.workflowId).toBe(res2.workflowId);
     // Second is alreadyStarted (idempotent)
