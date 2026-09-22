@@ -58,6 +58,7 @@ type ContextActivities = {
   compileContext(params: {
     runId: string;
     organizationId: string;
+    conversationId: string;
     agentVersionId: string;
     triggerMessageId?: string;
   }): Promise<{
@@ -613,6 +614,10 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         agentVersionId: input.agentVersionId,
         actorId: `run:${input.runId}`,
       },
+      // Engine-issued capability relayed from dispatch — the worker needs it
+      // to authorize this and every later Engine MCP RPC.
+      ...(input.capabilityToken !== undefined ? { capabilityToken: input.capabilityToken } : {}),
+      ...(input.capabilityId !== undefined ? { capabilityId: input.capabilityId } : {}),
     });
     leaseEpoch = extractBigint(claimRes, 'leaseEpoch', 'epoch');
     expectedRunVersion = extractBigint(claimRes, 'version', 'runVersion');
@@ -624,6 +629,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
     const compiled = await compileContext({
       runId: input.runId,
       organizationId: input.organizationId,
+      conversationId: input.conversationId,
       agentVersionId: input.agentVersionId,
       ...(input.triggerMessageId !== undefined ? { triggerMessageId: input.triggerMessageId } : {}),
     });

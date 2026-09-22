@@ -44,6 +44,78 @@ function bootstrapCapability(config: Config): CapabilityToken {
 }
 
 /**
+ * Engine capability op → Studio RPC method names, for the Studio-side decoded
+ * view of a dispatch-issued capability. The Engine is the real authorizer;
+ * this mapping keeps client-side fail-closed checks accurate.
+ */
+const CAPABILITY_OP_METHODS: Record<string, string[]> = {
+  lease: ['AcquireOrRenewRunLease', 'ReleaseRunLease'],
+  context: ['GetAuthorizedRunContext'],
+  search_knowledge: ['SearchKnowledge'],
+  append_events: ['AppendRunEvents'],
+  approval: ['CreateApprovalRequest', 'GetApprovalState'],
+  memory_proposal: ['SubmitMemoryProposal'],
+  tool: ['AuthorizeToolCall', 'RecordToolOutcome', 'GetToolCredential'],
+  checkpoint: ['SaveCheckpointRef', 'GetLatestCheckpoint', 'SaveConversationSummary'],
+  commit: ['CommitRunResult', 'FailRun'],
+  observe: ['GetRunArtifact', 'PutRunArtifact'],
+  escalation: ['RequestHumanHandoff'],
+  artifact: ['PutRunArtifact', 'GetRunArtifact'],
+};
+
+/**
+ * Decode the Engine-issued dispatch capability JWT into the Studio-side
+ * CapabilityToken view. The signature is NOT verified here — the Engine
+ * re-verifies the presented JWT on every RPC; Studio fails closed on a
+ * malformed payload. The capability_id is taken from the JWT itself: the
+ * relayed capabilityId parameter carries the Engine's request-context value
+ * ('engine-dispatch'), which is NOT the token's capability_id.
+ *
+ * Exported for unit tests (pure function).
+ */
+export function capabilityFromDispatchJwt(
+  scope: RunScope,
+  capabilityToken: string,
+  _capabilityId: string,
+): CapabilityToken {
+  const parts = capabilityToken.split('.');
+  const payloadB64 = parts[1];
+  if (parts.length !== 3 || !payloadB64) {
+    throw new Error('dispatch capability is not a well-formed JWT');
+  }
+  let claims: Record<string, unknown>;
+  try {
+    claims = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as Record<string, unknown>;
+  } catch {
+    throw new Error('dispatch capability payload is not valid JSON');
+  }
+  const capabilityId = claims['capability_id'];
+  if (typeof capabilityId !== 'string' || capabilityId.length === 0) {
+    throw new Error('dispatch capability has no capability_id claim');
+  }
+  const allowedOps = Array.isArray(claims['allowed_ops'])
+    ? (claims['allowed_ops'] as unknown[]).filter((op): op is string => typeof op === 'string')
+    : [];
+  const allowedMethods = [...new Set(allowedOps.flatMap((op) => CAPABILITY_OP_METHODS[op] ?? []))];
+  const exp = typeof claims['exp'] === 'number' ? claims['exp'] * 1000 : 0;
+  const iat = typeof claims['iat'] === 'number' ? claims['iat'] * 1000 : 0;
+  return {
+    capabilityId,
+    organizationId: typeof claims['organization_id'] === 'string' ? claims['organization_id'] : scope.organizationId,
+    conversationId: typeof claims['conversation_id'] === 'string' ? claims['conversation_id'] : scope.conversationId,
+    runId: typeof claims['run_id'] === 'string' ? claims['run_id'] : scope.runId,
+    agentVersionId:
+      typeof claims['assistant_version_id'] === 'string' ? claims['assistant_version_id'] : scope.agentVersionId,
+    actorId: typeof claims['sub'] === 'string' ? claims['sub'] : scope.actorId,
+    allowedMethods,
+    issuedAt: iat,
+    expiresAt: exp,
+    keyId: typeof claims['kid'] === 'string' ? claims['kid'] : '',
+    ...(typeof claims['lease_epoch'] === 'number' ? { leaseEpoch: claims['lease_epoch'] } : {}),
+  };
+}
+
+/**
  * Per-run MCP client manager. One transport (worker-wide), one client per run
  * (scope + capability are run-scoped). Claim updates the cached client so post-claim
  * RPCs carry the Engine-issued capability.
@@ -63,6 +135,26 @@ export class McpClientManager {
     const client = new NeryvaMcpClient({
       transport: this.transport,
       capability: bootstrapCapability(this.config),
+      grantedScope: scope,
+      protocolVersion: `${this.config.neryvaMcp.protocolMajor}.0`,
+    } satisfies NeryvaMcpClientOptions);
+    this.clients.set(scope.runId, client);
+    return client;
+  }
+
+  /**
+   * Client built from the Engine-issued dispatch capability JWT. This is the
+   * production path: runtime-control relays the dispatch capability through
+   * the workflow input, and the worker presents it as Authorization: Bearer
+   * on every Engine MCP RPC — including the first one (claim/lease).
+   */
+  dispatchClient(scope: RunScope, capabilityToken: string, capabilityId: string): NeryvaMcpClient {
+    const existing = this.clients.get(scope.runId);
+    if (existing) return existing;
+    const client = new NeryvaMcpClient({
+      transport: this.transport,
+      capability: capabilityFromDispatchJwt(scope, capabilityToken, capabilityId),
+      capabilityJwt: capabilityToken,
       grantedScope: scope,
       protocolVersion: `${this.config.neryvaMcp.protocolMajor}.0`,
     } satisfies NeryvaMcpClientOptions);

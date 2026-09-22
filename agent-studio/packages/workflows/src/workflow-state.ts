@@ -28,6 +28,15 @@ export interface AgentRunWorkflowInput {
   workflowGeneration: number;
   /** Correlation for tracing Engine → MCP → Temporal → provider/tool */
   correlationId: string;
+  /**
+   * Engine-issued run-scoped capability JWT, relayed from dispatch via
+   * runtime-control. The worker presents it as Authorization: Bearer on every
+   * Engine MCP RPC. Optional for backward compat with already-started
+   * workflows; absent means MCP RPCs fail closed at the Engine.
+   */
+  capabilityToken?: string | undefined;
+  /** capability_id bound to capabilityToken (request-context binding). */
+  capabilityId?: string | undefined;
   /** Caller-provided budgets override — bounded */
   budgetOverrides?:
     | Partial<{

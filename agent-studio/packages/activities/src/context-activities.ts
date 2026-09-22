@@ -102,6 +102,7 @@ function definitionFromManifest(manifest: ManifestLike): AgentDefinitionV1 | und
 export interface CompileContextParams {
   runId: string;
   organizationId: string;
+  conversationId?: string | undefined;
   agentVersionId: string;
   triggerMessageId?: string | undefined;
 }
@@ -187,7 +188,7 @@ export function createContextActivities(client: NeryvaMcpClient) {
       const lastUser = [...recent].reverse().find((m) => m.role === 'user');
       const compilerInput: CompilerInput = {
         organizationId: params.organizationId,
-        conversationId: manifest.conversationId ?? '',
+        conversationId: params.conversationId ?? manifest.conversationId ?? '',
         runId: params.runId,
         agentVersionId: params.agentVersionId,
         agentDefinition: definition,

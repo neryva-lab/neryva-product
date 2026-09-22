@@ -147,6 +147,11 @@ export class RuntimeControlService {
           idempotencyKey: parsed.idempotencyKey,
           correlationId: parsed.correlationId,
           workflowGeneration: 1,
+          // Engine-issued run-scoped capability — the worker presents it as
+          // Authorization: Bearer on every Engine MCP RPC. Dropped here it
+          // never reaches the worker and every RPC fails permission_denied.
+          capabilityToken: parsed.capabilityToken,
+          capabilityId: parsed.capabilityId,
         } satisfies Record<string, unknown>,
         {
           workflowId,

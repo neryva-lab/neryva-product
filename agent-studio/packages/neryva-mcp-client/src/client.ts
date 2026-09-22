@@ -59,6 +59,13 @@ import { mapConnectError } from './error-mapping.js';
 export interface NeryvaMcpClientOptions {
   transport: Transport;
   capability: CapabilityToken;
+  /**
+   * Raw Engine-issued capability JWT, presented as `Authorization: Bearer` on
+   * every RPC. The Engine verifies this signature; the local CapabilityToken
+   * above is the Studio-side decoded view used for fail-closed scope checks.
+   * Required for any RPC the Engine authorizes (currently all of them).
+   */
+  capabilityJwt?: string | undefined;
   /** Engine-granted scope — the ONLY source of tenant fields on every request. */
   grantedScope: {
     organizationId: string;
@@ -125,15 +132,29 @@ export class NeryvaMcpClient {
     this.grantedScope = opts.grantedScope;
     this.protocolVersion = opts.protocolVersion ?? '1.0';
     this.correlationId = opts.correlationId ?? opts.grantedScope.runId;
+    // Present the Engine-issued capability JWT as Authorization: Bearer on
+    // every RPC. The Engine verifies the signature server-side; without this
+    // header every authorized RPC fails with permission_denied. Applied as a
+    // transport wrapper so it covers unary and streaming calls alike.
+    const jwt = opts.capabilityJwt;
+    const authedTransport: Transport = {
+      unary: (method, signal, timeoutMs, header, input, contextValues) => {
+        const headers = new Headers(header ?? undefined);
+        if (jwt) headers.set('authorization', `Bearer ${jwt}`);
+        return opts.transport.unary(method, signal, timeoutMs, headers, input, contextValues);
+      },
+      stream: (method, signal, timeoutMs, header, input, contextValues) => {
+        const headers = new Headers(header ?? undefined);
+        if (jwt) headers.set('authorization', `Bearer ${jwt}`);
+        return opts.transport.stream(method, signal, timeoutMs, headers, input, contextValues);
+      },
+    };
     // Cast: the generated service descriptor's I/O types come from the remote es plugin
     // generation; Connect accepts the descriptor at runtime. Conformance tests pin shape.
-    this.authority = createClient(RunAuthorityService as never, opts.transport as never) as never;
+    this.authority = createClient(RunAuthorityService as never, authedTransport as never) as never;
     // Observation surface (safe reads: GetRun / ListRunEvents / GetRunArtifact)
     // shares the transport and the capability token presented per call.
-    this.observation = createClient(
-      RunObservationService as never,
-      opts.transport as never,
-    ) as never;
+    this.observation = createClient(RunObservationService as never, authedTransport as never) as never;
   }
 
   /**

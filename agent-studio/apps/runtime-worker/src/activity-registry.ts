@@ -25,6 +25,53 @@ import {
 import { resolveModerationHook, type ModerationHook } from '@neryva/security';
 import { EngineSecretProvider } from '@neryva/activities';
 
+/**
+ * Convert the Engine's claim response to a Temporal-serializable plain object.
+ * The protobuf response carries uint64 fields as BigInt, which Temporal's
+ * payload converter cannot serialize. The workflow's extractBigint accepts
+ * either bigint or number, so numbers are safe.
+ */
+function toSerializableClaim(res: unknown): unknown {
+  const r = res as Record<string, unknown>;
+  const run = r['run'] as Record<string, unknown> | undefined;
+  const num = (v: unknown): number | undefined =>
+    typeof v === 'bigint' ? Number(v) : typeof v === 'number' ? v : undefined;
+  return {
+    leaseEpoch: num(r['leaseEpoch'] ?? r['epoch']),
+    epoch: num(r['leaseEpoch'] ?? r['epoch']),
+    acquired: r['acquired'] === true,
+    run: run
+      ? {
+          version: num(run['version']),
+          runVersion: num(run['version']),
+        }
+      : undefined,
+  };
+}
+function parseStaleLeaseDetails(err: unknown): { leaseOwner: string; actualEpoch: number } | null {
+  const connectErr =
+    err instanceof Error && (err as { cause?: unknown }).cause instanceof Error
+      ? ((err as { cause?: unknown }).cause as Error)
+      : err instanceof Error
+        ? err
+        : null;
+  if (!connectErr) return null;
+  const metadata = (connectErr as unknown as { metadata?: { get(name: string): string | null } }).metadata;
+  const detailsHeader = metadata?.get('details') ?? null;
+  if (!detailsHeader) return null;
+  try {
+    const details = JSON.parse(detailsHeader) as Record<string, unknown>;
+    const leaseOwner = details['lease_owner'];
+    const actualEpoch = details['actual_epoch'];
+    if (typeof leaseOwner === 'string' && typeof actualEpoch === 'number') {
+      return { leaseOwner, actualEpoch };
+    }
+  } catch {
+    // malformed details — not a parseable stale-lease conflict
+  }
+  return null;
+}
+
 export interface ActivityRegistryOptions {
   manager: McpClientManager;
   /** Guardrail config (FL-1.4) — resolved into the moderation hook. */
@@ -140,8 +187,11 @@ export function createActivityRegistry(opts: ActivityRegistryOptions): Record<st
   };
 
   // Claim is bootstrap-aware: pre-claim there is no run client yet, so the claim
-  // activity uses the bootstrap identity and upgrades the cached client when the
-  // Engine-issued capability arrives in the claim response.
+  // The Engine-issued dispatch capability (relayed through the workflow input)
+  // is the production path: the worker presents it as Authorization: Bearer on
+  // every Engine MCP RPC, including the first one (claim/lease). The bootstrap
+  // identity is only a fallback for workflows started without a dispatch
+  // capability — the Engine rejects it, failing closed.
   registry['acquireOrRenewRunLease'] = async (params: {
     scope: Parameters<
       ReturnType<typeof createMcpActivities>['acquireOrRenewRunLease']
@@ -152,22 +202,46 @@ export function createActivityRegistry(opts: ActivityRegistryOptions): Record<st
       : never;
     expectedLeaseOwner?: string;
     expectedLeaseEpoch?: bigint;
+    capabilityToken?: string;
+    capabilityId?: string;
   }) => {
-    const bootstrap = opts.manager.bootstrapClient(params.scope);
-    const res: unknown = await bootstrap.claimRun({
-      expectedLeaseOwner: params.expectedLeaseOwner,
-      expectedLeaseEpoch: params.expectedLeaseEpoch,
-    });
-    // Post-claim upgrade: Engine-issued capability in the claim response replaces the
-    // bootstrap identity. Guarded — absence keeps the bootstrap client (fail-closed for
-    // mutating RPCs, which the bootstrap capability does not allow).
-    if (typeof res === 'object' && res !== null) {
-      const cap = (res as Record<string, unknown>)['capability'];
-      if (typeof cap === 'object' && cap !== null) {
-        opts.manager.upgradeClient(params.scope, cap as never);
+    const scope = params.scope as unknown as {
+      organizationId: string;
+      conversationId: string;
+      runId: string;
+      agentVersionId: string;
+      actorId: string;
+    };
+    const client =
+      params.capabilityToken && params.capabilityId
+        ? opts.manager.dispatchClient(scope, params.capabilityToken, params.capabilityId)
+        : opts.manager.bootstrapClient(scope);
+    const claim = (expectedEpoch: bigint | undefined, expectedOwner?: string) =>
+      client.claimRun({
+        expectedLeaseOwner: expectedOwner ?? params.expectedLeaseOwner,
+        expectedLeaseEpoch: expectedEpoch,
+      });
+    try {
+      const res: unknown = await claim(params.expectedLeaseEpoch);
+      // The dispatch client is cached per runId, so every later activity resolves
+      // the same Engine-issued capability via clientForRun. (The Engine's claim
+      // response carries no capability — capabilities are issued at dispatch —
+      // so there is nothing to upgrade here.)
+      return toSerializableClaim(res);
+    } catch (err) {
+      // Idempotent retry: a previous attempt may have acquired the lease while
+      // its response was lost (timeout/crash). The Engine's stale-epoch
+      // conflict carries the actual owner+epoch in the `details` response
+      // header. If WE hold the lease, re-claim with the current epoch and our
+      // owner (a renew, not a steal). Otherwise rethrow — another holder is a
+      // real conflict.
+      const stale = parseStaleLeaseDetails(err);
+      const ourOwner = `agent-studio:${scope.actorId}`;
+      if (stale && stale.leaseOwner === ourOwner) {
+        return toSerializableClaim(await claim(BigInt(stale.actualEpoch), ourOwner));
       }
+      throw err;
     }
-    return res;
   };
 
   return registry;
