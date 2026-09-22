@@ -20,9 +20,15 @@ async function main(): Promise<void> {
 
   // Dynamic imports after telemetry to ensure instrumentation
   const { createWorker } = await import('./worker.js');
+  const { createDependencies } = await import('./dependencies.js');
   const { createShutdownHandler } = await import('./shutdown.js');
 
-  const worker = await createWorker(config);
+  // Production wiring: the worker must serve the full activity registry
+  // (MCP, context, model via EngineSecretProvider, tools). Without deps the
+  // worker registers zero activities and every workflow stalls at its first
+  // activity task.
+  const deps = await createDependencies(config);
+  const worker = await createWorker(config, deps);
   const shutdown = createShutdownHandler(worker, config.runtime.shutdownDeadlineMs);
 
   process.on('SIGTERM', shutdown);
