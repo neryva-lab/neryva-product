@@ -1,0 +1,8 @@
+{
+  "tools": [
+    { "name": "search_knowledge", "access": "read", "approval": "optional" },
+    { "name": "search_tickets", "access": "read", "approval": "optional" },
+    { "name": "update_ticket", "access": "write", "approval": "required" },
+    { "name": "request_human_handoff", "access": "write", "approval": "optional" }
+  ]
+}

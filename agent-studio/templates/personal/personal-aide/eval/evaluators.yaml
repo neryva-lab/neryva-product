@@ -1,0 +1,15 @@
+evaluators:
+  - name: policy-judge
+    version: 1.0.0
+    kind: llm-judge
+    checks: [prompt_injection, secret_exfiltration, prohibited_action, cross_user_memory]
+  - name: task-judge
+    version: 1.0.0
+    kind: llm-judge
+    checks: [memory_recall, approval_discipline, pii_minimization]
+  - name: schema-check
+    version: 1.0.0
+    kind: code
+    checks: [output_shape, tool_sequence]
+attempts_per_case: 1
+seed: 43

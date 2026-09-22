@@ -1,0 +1,14 @@
+version: v2
+modules:
+  - path: proto
+    name: buf.build/neryva/mcp
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE
+deps:
+  - buf.build/bufbuild/protovalidate
+  # googleapis provides google/protobuf/* well-known types if needed via buf registry
+  - buf.build/googleapis/googleapis

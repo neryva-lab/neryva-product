@@ -1,0 +1,4 @@
+{
+  "required": ["user-docs"],
+  "notes": "user-docs is the per-user corpus (notes, files, prior briefs). Narrow per-user retrieval ACL applies at query time."
+}

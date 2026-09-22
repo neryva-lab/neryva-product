@@ -1,0 +1,72 @@
+# ── Dependencies ───────────────────────────────
+node_modules/
+neryva-mcp-contract/node_modules/
+.opencode/node_modules/
+.pnp/
+.pnp.js
+
+# ── Build output (tsc outDir=dist) ─────────────
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# NOTE: neryva-mcp-contract/gen/ts is INTENTIONALLY TRACKED
+# (versioned SDK + conformance fixtures, verified by `pnpm gen:check`).
+# Do not ignore it.
+
+# ── Tests / coverage (vitest) ──────────────────
+coverage/
+.nyc_output/
+junit.xml
+.testcontainers.properties
+
+# ── Env / secrets ──────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# ── Buf / proto cache ──────────────────────────
+.buf/
+buf.lock.bak
+
+# ── Temporal (local dev) ───────────────────────
+.temporal/
+temporal-data/
+
+# ── Logs ───────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── OS ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ── IDE / editor ───────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+
+# ── Misc ───────────────────────────────────────
+.cache/
+.tmp/
+temp/
+tmp/
+.eslintcache
+.prettiercache

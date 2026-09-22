@@ -1,0 +1,7 @@
+{
+  "tools": [
+    { "name": "search_memory", "access": "read", "approval": "optional" },
+    { "name": "schedule_meeting", "access": "write", "approval": "required" },
+    { "name": "send_email", "access": "write", "approval": "required" }
+  ]
+}

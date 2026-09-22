@@ -1,0 +1,26 @@
+{
+  "title": "Agent Studio Workflow (10.9)",
+  "uid": "agent-studio-workflow",
+  "panels": [
+    {
+      "title": "workflow starts/completions",
+      "targets": ["workflow_started_total", "workflow_completed_total", "workflow_failed_total"],
+      "type": "timeseries"
+    },
+    { "title": "activity retries", "targets": ["activity_retries_total"], "type": "timeseries" },
+    {
+      "title": "provider latency/errors p50/p95/p99",
+      "targets": ["provider_latency_ms", "provider_errors_total"],
+      "type": "heatmap"
+    },
+    { "title": "tool denials", "targets": ["tool_denials_total"], "type": "stat" },
+    { "title": "approval age", "targets": ["approval_age_ms"], "type": "histogram" },
+    { "title": "budget exhaustion", "targets": ["budget_exhausted_total"], "type": "stat" },
+    { "title": "mcp errors", "targets": ["mcp_errors_total"], "type": "timeseries" },
+    { "title": "event lag", "targets": ["event_lag_ms"], "type": "timeseries" },
+    { "title": "artifact failures", "targets": ["artifact_failures_total"], "type": "stat" }
+  ],
+  "templating": {
+    "list": [{ "name": "org", "type": "query", "query": "label_values(organization_id_hash)" }]
+  }
+}

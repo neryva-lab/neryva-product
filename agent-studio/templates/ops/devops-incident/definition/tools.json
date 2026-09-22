@@ -1,0 +1,8 @@
+{
+  "tools": [
+    { "name": "search_knowledge", "access": "read", "approval": "optional" },
+    { "name": "summarize_logs", "access": "read", "approval": "optional" },
+    { "name": "post_status", "access": "write", "approval": "required" },
+    { "name": "page_oncall", "access": "write", "approval": "required" }
+  ]
+}

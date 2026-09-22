@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../contracts" },
+    { "path": "../../packages/agent-definition" },
+    { "path": "../../packages/context-compiler" },
+    { "path": "../../packages/model-gateway" },
+    { "path": "../../packages/neryva-mcp-client" },
+    { "path": "../../packages/telemetry" }
+  ]
+}

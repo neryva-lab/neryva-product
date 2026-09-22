@@ -1,0 +1,19 @@
+slug: internal-helpdesk
+version: 1.0.0
+status: stable
+family: ops
+name: Internal Helpdesk
+tagline: IT triage with scoped credentials and clean routes
+icon: wrench
+tone: neutral
+categories:
+  - ops
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 24af93ba3a18f3b14440282d9a56871578864fa3407d068576854cef3fbf1c66

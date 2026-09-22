@@ -1,0 +1,30 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "references": [
+    { "path": "./contracts" },
+    { "path": "./apps/runtime-worker" },
+    { "path": "./apps/runtime-control" },
+    { "path": "./apps/tool-worker" },
+    { "path": "./apps/eval-worker" },
+    { "path": "./packages/agent-kernel" },
+    { "path": "./packages/agent-definition" },
+    { "path": "./packages/context-compiler" },
+    { "path": "./packages/model-gateway" },
+    { "path": "./packages/tool-gateway" },
+    { "path": "./packages/memory-retrieval" },
+    { "path": "./packages/neryva-mcp-client" },
+    { "path": "./packages/workflows" },
+    { "path": "./packages/activities" },
+    { "path": "./packages/artifacts" },
+    { "path": "./packages/telemetry" },
+    { "path": "./packages/security" },
+    { "path": "./packages/testkit" },
+    { "path": "./scripts" }
+  ],
+  "include": [],
+  "files": []
+}

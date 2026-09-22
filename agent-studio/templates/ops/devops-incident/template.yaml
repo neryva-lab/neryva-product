@@ -1,0 +1,19 @@
+slug: devops-incident
+version: 1.0.0
+status: stable
+family: ops
+name: DevOps Incident Triage
+tagline: Summarize logs, post status, page humans
+icon: alert
+tone: warning
+categories:
+  - ops
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 3d2750edb94b0aa49fb2395f058aa7449cd387d1d879e48d0ed6202af6d26b9e

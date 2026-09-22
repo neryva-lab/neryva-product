@@ -1,0 +1,9 @@
+{
+  "allowed_models": ["anthropic/claude-sonnet-4-5"],
+  "fallback_enabled": true,
+  "model_params": {
+    "temperature": 0.2,
+    "max_output_tokens": 1536,
+    "output_schema": "{\"type\":\"object\",\"required\":[\"company\",\"person\",\"priorities\",\"openers\",\"unknowns\"],\"properties\":{\"company\":{\"type\":\"object\"},\"person\":{\"type\":\"object\"},\"priorities\":{\"type\":\"array\"},\"openers\":{\"type\":\"array\"},\"unknowns\":{\"type\":\"array\"}}}"
+  }
+}

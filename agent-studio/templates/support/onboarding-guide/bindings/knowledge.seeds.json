@@ -1,0 +1,4 @@
+{
+  "required": ["getting-started"],
+  "notes": "getting-started is the ordered setup corpus (install, configure, first run, troubleshooting)."
+}

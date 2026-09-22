@@ -1,0 +1,14 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "contracts"
+
+# pnpm workspace — canonical for Agent Studio monorepo
+# See agent_studio_implementation_plan.md:86 (pnpm canonical) + ledger.md:0.1
+# Engine uses same pnpm@9.12.0 (packageManager field). Lockfile is authoritative.
+# Never commit without pnpm install --frozen-lockfile green.
+
+# Dependency rules enforced via:
+# - eslint import boundaries (eslint.config.js)
+# - pnpm check:dependencies (scripts/check-dependencies.mjs)
+# - CI gate: package DAG contracts → kernel/definition → gateways/context → activities → workflows → apps

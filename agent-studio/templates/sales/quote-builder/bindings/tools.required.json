@@ -1,0 +1,16 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Price-book lines and discount policy bands before any number is stated."
+    },
+    {
+      "name": "generate_quote",
+      "effect_class": "MUTATING",
+      "approval_requirement": "REQUIRED",
+      "rate_limit_per_run": 1,
+      "when_to_use": "Generate the proposal PDF exactly once after explicit approval of line items + total. One call per run."
+    }
+  ]
+}

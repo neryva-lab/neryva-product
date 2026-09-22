@@ -1,0 +1,14 @@
+{
+  "required": [
+    {
+      "name": "web_search",
+      "built_in": true,
+      "when_to_use": "Per-competitor, per-topic public research — two independent sources per material claim."
+    },
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Our positioning and prior intel to compute deltas against competitor moves."
+    }
+  ]
+}

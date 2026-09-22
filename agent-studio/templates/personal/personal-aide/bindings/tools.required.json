@@ -1,0 +1,21 @@
+{
+  "required": [
+    {
+      "name": "search_memory",
+      "built_in": true,
+      "when_to_use": "Recall user preferences before asking again — memory first, questions second."
+    },
+    {
+      "name": "schedule_meeting",
+      "effect_class": "MUTATING",
+      "approval_requirement": "REQUIRED",
+      "when_to_use": "Book a meeting only after explicit confirmation of time and attendees; state what will be booked first."
+    },
+    {
+      "name": "send_email",
+      "effect_class": "DESTRUCTIVE",
+      "approval_requirement": "REQUIRED",
+      "when_to_use": "Send only the exact approved draft, never a paraphrase; external send is irreversible."
+    }
+  ]
+}

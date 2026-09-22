@@ -1,0 +1,6 @@
+{
+  "history_limit": 20,
+  "summary_enabled": false,
+  "knowledge_sources": ["market-research"],
+  "memory_scope": "none"
+}

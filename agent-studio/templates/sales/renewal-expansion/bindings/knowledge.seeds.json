@@ -1,0 +1,4 @@
+{
+  "required": ["account-playbooks"],
+  "notes": "account-playbooks carries health-check scripts, expansion criteria, and opt-out handling."
+}

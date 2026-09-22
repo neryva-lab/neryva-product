@@ -1,0 +1,6 @@
+{
+  "history_limit": 30,
+  "summary_enabled": true,
+  "knowledge_sources": ["incident-runbooks"],
+  "memory_scope": "conversation"
+}

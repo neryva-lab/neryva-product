@@ -1,0 +1,6 @@
+{
+  "history_limit": 60,
+  "summary_enabled": true,
+  "knowledge_sources": ["help-center"],
+  "memory_scope": "organization"
+}

@@ -1,0 +1,20 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Fetch the runbook for the classified issue before acting — runbooks govern every write."
+    },
+    {
+      "name": "create_ticket",
+      "effect_class": "MUTATING",
+      "approval_requirement": "REQUIRED",
+      "when_to_use": "Route complex cases with queue + summary + logs attached; state the routing first."
+    },
+    {
+      "name": "request_human_handoff",
+      "built_in": true,
+      "when_to_use": "Urgent or out-of-scope issues — hand off with requester context and attempts so far."
+    }
+  ]
+}

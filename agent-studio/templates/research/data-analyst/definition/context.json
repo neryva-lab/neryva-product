@@ -1,0 +1,6 @@
+{
+  "history_limit": 20,
+  "summary_enabled": false,
+  "knowledge_sources": ["metric-catalog"],
+  "memory_scope": "none"
+}

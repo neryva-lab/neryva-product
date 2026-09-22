@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+gen
+pnpm-lock.yaml
+*.min.js
+# Generated artifact — the generator (scripts/generate-template-registry.mjs)
+# owns its bytes; prettier reformatting would break hash-parity checks.
+templates/registry.json

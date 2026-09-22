@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "baseUrl": "."
+  },
+  "include": ["agent-definition/**/*", "tool/**/*", "provider/**/*", "events/**/*", "mcp/**/*"],
+  "exclude": ["dist", "node_modules"],
+  "references": []
+}

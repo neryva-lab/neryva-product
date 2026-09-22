@@ -1,0 +1,5 @@
+{
+  "input_policy": "default",
+  "output_policy": "brand-safe",
+  "pii_redaction": true
+}

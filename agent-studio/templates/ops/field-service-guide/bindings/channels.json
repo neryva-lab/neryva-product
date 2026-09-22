@@ -1,0 +1,6 @@
+{
+  "channels": ["web-widget", "whatsapp"],
+  "caps": {
+    "web-widget": { "citation_links": false }
+  }
+}

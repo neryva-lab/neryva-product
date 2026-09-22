@@ -1,0 +1,410 @@
+syntax = "proto3";
+
+package neryva.mcp.run.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "neryva/mcp/common/v1/common.proto";
+import "neryva/mcp/event/v1/event.proto";
+import "neryva/mcp/context/v1/context.proto";
+import "neryva/mcp/tool/v1/tool.proto";
+import "neryva/mcp/approval/v1/approval.proto";
+import "neryva/mcp/checkpoint/v1/checkpoint.proto";
+
+// RunState is monotonic and Engine-owned. Only Engine may transition to terminal.
+// Reference: neryva_mcp_implementation_plan.md:430-452
+enum RunState {
+  RUN_STATE_UNSPECIFIED = 0;
+  RUN_STATE_QUEUED = 1;
+  RUN_STATE_CLAIMED = 2;
+  RUN_STATE_RUNNING = 3;
+  RUN_STATE_WAITING_APPROVAL = 4;
+  RUN_STATE_WAITING_INPUT = 5;
+  RUN_STATE_CANCELLING = 6;
+  RUN_STATE_SUCCEEDED = 7;
+  RUN_STATE_FAILED = 8;
+  RUN_STATE_CANCELLED = 9;
+  RUN_STATE_EXPIRED = 10;
+}
+
+message Run {
+  string run_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).required = true
+  ];
+  string organization_id = 2 [(buf.validate.field).string.min_len = 1];
+  string conversation_id = 3 [(buf.validate.field).string.min_len = 1];
+  string assistant_version_id = 4 [(buf.validate.field).string.min_len = 1];
+  RunState state = 5 [(buf.validate.field).enum.defined_only = true];
+  int64 version = 6 [(buf.validate.field).int64.gte = 0];
+  uint64 lease_epoch = 7;
+  google.protobuf.Timestamp created_at = 8 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp updated_at = 9 [(buf.validate.field).required = true];
+  // Lease owner (Studio worker identity). Separate from business state.
+  string lease_owner = 10;
+  google.protobuf.Timestamp lease_expires_at = 11;
+}
+
+// --- RunAuthorityService (Engine implements) ---
+// Authority: Engine validates scope, policy, version; persists canonically.
+// Idempotency: every mutating RPC requires RequestContext.idempotency_key.
+// Retry: only UNAVAILABLE retryable; ABORTED/FAILED_PRECONDITION require caller handling.
+// Deadline: 5s default for unary; see per-RPC docs.
+
+message AcquireOrRenewRunLeaseRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string expected_lease_owner = 2;
+  uint64 expected_lease_epoch = 3;
+  google.protobuf.Timestamp renew_until = 4;
+}
+
+message AcquireOrRenewRunLeaseResponse {
+  Run run = 1 [(buf.validate.field).required = true];
+  bool acquired = 2;
+}
+
+message ReleaseRunLeaseRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  uint64 lease_epoch = 2 [(buf.validate.field).required = true];
+}
+
+message ReleaseRunLeaseResponse {
+  Run run = 1 [(buf.validate.field).required = true];
+}
+
+message GetRunRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+}
+
+message GetRunResponse {
+  Run run = 1 [(buf.validate.field).required = true];
+}
+
+// UsageEntry — provider-neutral token accounting delivered with the terminal
+// commit (v1.1). Engine records it into the append-only usage ledger with the
+// commit's idempotency key, so a replayed commit can never double-bill.
+message UsageEntry {
+  string provider = 1 [(buf.validate.field).string.min_len = 1, (buf.validate.field).string.max_len = 64];
+  string model = 2 [(buf.validate.field).string.min_len = 1, (buf.validate.field).string.max_len = 128];
+  uint64 prompt_tokens = 3;
+  uint64 completion_tokens = 4;
+  uint64 total_tokens = 5;
+}
+
+message CommitRunResultRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  int64 expected_version = 2 [(buf.validate.field).int64.gte = 0];
+  string result_text = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 65536
+  ];
+  // Optional claim-check for large result.
+  neryva.mcp.common.v1.ArtifactRef result_artifact = 4;
+  // v1.1: cumulative token usage for this run — recorded atomically with the
+  // terminal commit into the Engine usage ledger.
+  UsageEntry usage = 5;
+  // v1.2 (FL-3.4): up to 4 short follow-up suggestions stored with the
+  // committed assistant message and surfaced to consumers (widget/console).
+  repeated string suggested_followups = 6 [
+    (buf.validate.field).repeated.max_items = 4,
+    (buf.validate.field).repeated.items.string.min_len = 1,
+    (buf.validate.field).repeated.items.string.max_len = 200
+  ];
+}
+
+message CommitRunResultResponse {
+  Run run = 1 [(buf.validate.field).required = true];
+  string message_id = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message FailRunRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  int64 expected_version = 2 [(buf.validate.field).int64.gte = 0];
+  string error_code = 3 [(buf.validate.field).string.min_len = 1];
+  string error_message = 4 [(buf.validate.field).string.max_len = 1024];
+}
+
+message FailRunResponse {
+  Run run = 1 [(buf.validate.field).required = true];
+}
+
+// SubmitMemoryProposal — Engine stores as proposal, not truth; preserves provenance/confidence/visibility.
+// Authority: Engine validates ctx scope, checks policy, stores proposal durably.
+// Idempotency: required per proposal_id; duplicate same digest returns original, different digest rejects.
+// Retry: not retryable on ABORTED; UNAVAILABLE conditional.
+// Deadline: 3s.
+message SubmitMemoryProposalRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string proposal_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 64,
+    (buf.validate.field).required = true
+  ];
+  string scope = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32,
+    (buf.validate.field).required = true
+  ];
+  string value = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 8192,
+    (buf.validate.field).required = true
+  ];
+  string provenance = 5 [(buf.validate.field).string.max_len = 1024];
+  double confidence = 6 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  string visibility = 7 [(buf.validate.field).string.max_len = 32];
+  google.protobuf.Timestamp expires_at = 8;
+}
+
+message SubmitMemoryProposalResponse {
+  string proposal_id = 1 [(buf.validate.field).string.min_len = 1];
+  bool accepted = 2;
+  string stored_id = 3;
+}
+
+// GetApprovalState — v1.2: Studio observes the Engine's decision on an approval
+// it previously proposed (by the Studio-chosen approval_ref). This closes the
+// park/resume loop: a re-driven run checks the durable decision before
+// re-parking, so an approved tool call executes and a denied one is skipped.
+// Authority: Engine validates ctx scope (run-bound) before the read.
+// Capability op: approval. Idempotency: safe read (no key). Deadline: 2s.
+message GetApprovalStateRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string approval_ref = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 64,
+    (buf.validate.field).required = true
+  ];
+}
+
+message GetApprovalStateResponse {
+  // Engine-internal approval id (uuid) — empty when no approval exists for the ref.
+  string approval_id = 1;
+  string approval_ref = 2;
+  // PENDING | APPROVED | DENIED | EXPIRED (mirrors approval.v1 state strings;
+  // NOT_FOUND when the ref was never proposed).
+  string state = 3;
+  string decision_id = 4;
+  string decided_by = 5;
+  google.protobuf.Timestamp decided_at = 6;
+}
+
+// RequestHumanHandoff — v1.2: run-originated human escalation (the built-in
+// `request_human_handoff` tool). Engine opens a WAITING escalation row, flips
+// the conversation to 'escalated' (auto-responder paused) and emits the
+// lifecycle outbox event — one transaction. Capability op: escalation.
+// Idempotency: one open escalation per conversation; a repeat returns the
+// existing row. Deadline: 3s.
+message RequestHumanHandoffRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string reason = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 128,
+    (buf.validate.field).required = true
+  ];
+  string note = 3 [(buf.validate.field).string.max_len = 1024];
+}
+
+message RequestHumanHandoffResponse {
+  string escalation_id = 1 [(buf.validate.field).string.min_len = 1];
+  // WAITING on a fresh escalation; an existing open row's state on replay.
+  string state = 2;
+  string conversation_status = 3;
+}
+
+// PutRunArtifact — v1.3: Studio uploads a bounded, purpose-tagged artifact
+// (checkpoint loop state, oversized tool results) through the Engine, which
+// owns storage and returns the claim-check ArtifactRef. This keeps large
+// payloads OUT of run history while staying Engine-authorized end to end.
+// Capability op: artifact (new). Idempotency: caller-supplied request ctx
+// idempotency key; byte bounds enforced (max 512 KiB).
+message PutRunArtifactRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  // CHECKPOINT | TOOL_RESULT (claim-check policy subset).
+  string purpose = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32,
+    (buf.validate.field).required = true
+  ];
+  string media_type = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 128,
+    (buf.validate.field).required = true
+  ];
+  bytes data = 4 [(buf.validate.field).bytes.max_len = 524288];
+}
+
+message PutRunArtifactResponse {
+  neryva.mcp.common.v1.ArtifactRef artifact = 1 [(buf.validate.field).required = true];
+}
+
+// GetLatestCheckpoint — v1.3: the newest checkpoint pointer for a run, so a
+// re-driven execution can resume loop state instead of restarting.
+// Capability op: checkpoint. Safe read.
+message GetLatestCheckpointRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+}
+
+message GetLatestCheckpointResponse {
+  string checkpoint_ref = 1;
+  uint64 checkpoint_version = 2;
+  neryva.mcp.common.v1.ArtifactRef artifact = 3;
+}
+
+// GetToolCredential — v1.3: scoped disclosure of a tool's customer-endpoint
+// credential (HTTP tool executor binding, FL-2.10). The Engine validates the
+// run pin + tool policy and unseals the credential ONLY over this
+// authenticated channel; it never flows through the context manifest.
+// Capability op: tool. Audited. Deadline: 2s.
+message GetToolCredentialRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string tool_name = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 128,
+    (buf.validate.field).required = true
+  ];
+}
+
+message GetToolCredentialResponse {
+  // Empty when the tool has no bound credential (public endpoint).
+  string credential = 1;
+  string credential_header = 2;
+}
+
+service RunAuthorityService {
+  // Lease: acquire or renew fencing lease. Authority: Engine CAS on lease_epoch. Idempotency: required. Deadline: 2s. Retry: UNAVAILABLE only.
+  rpc AcquireOrRenewRunLease(AcquireOrRenewRunLeaseRequest) returns (AcquireOrRenewRunLeaseResponse) {}
+  // Lease: release. Authority: Engine verifies lease_epoch. Idempotency: required. Deadline: 2s.
+  rpc ReleaseRunLease(ReleaseRunLeaseRequest) returns (ReleaseRunLeaseResponse) {}
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // GetRun: authoritative snapshot. Authority: Engine WHERE tenant before serialization. Idempotency: safe read (no key). Deadline: 1s. Retry: UNAVAILABLE.
+  rpc GetRun(GetRunRequest) returns (GetRunResponse) {}
+  // Commit: atomic terminal transition + canonical assistant message exactly once. Authority: Engine CAS expected_version, validates not terminal. Idempotency: required (same digest→original, different→ALREADY_EXISTS). Deadline: 5s.
+  rpc CommitRunResult(CommitRunResultRequest) returns (CommitRunResultResponse) {}
+  // Fail: terminal failure. Authority: Engine CAS. Idempotency: required. Deadline: 3s.
+  rpc FailRun(FailRunRequest) returns (FailRunResponse) {}
+
+  // Event ledger — bounded batch, per-event (run_id,event_id) dedup, Engine sequence authoritative.
+  // Authority: Engine validates ctx scope, enforces per-run ordering. Idempotency: dedup by (run_id,event_id). Deadline: 5s. Batch 1..32.
+  rpc AppendRunEvents(neryva.mcp.event.v1.AppendRunEventsRequest) returns (neryva.mcp.event.v1.AppendRunEventsResponse) {}
+
+  // Context: authorized manifest. Authority: Engine applies tenant/role/conv/doc/classification filters in query before serialization. Safe read. Deadline: 3s. Retry: UNAVAILABLE.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc GetAuthorizedRunContext(neryva.mcp.context.v1.GetAuthorizedRunContextRequest) returns (neryva.mcp.context.v1.GetAuthorizedRunContextResponse) {}
+
+  // Approval: create human approval request. Authority: Engine persists WAITING_APPROVAL, policy check. Idempotency: required per approval_id. Deadline: 3s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc CreateApprovalRequest(neryva.mcp.approval.v1.CreateApprovalRequest) returns (neryva.mcp.approval.v1.CreateApprovalResponse) {}
+
+  // Memory: submit proposal (not truth). Authority: Engine validates scope, stores as pending proposal. Idempotency: required. Deadline: 2s.
+  rpc SubmitMemoryProposal(SubmitMemoryProposalRequest) returns (SubmitMemoryProposalResponse) {}
+
+  // Tool: authorize. Authority: Engine checks tenant/user/assistant/capability/limits, returns scoped capability. Audit. Idempotency: required per tool_call_id. Deadline: 2s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc AuthorizeToolCall(neryva.mcp.tool.v1.AuthorizeToolCallRequest) returns (neryva.mcp.tool.v1.AuthorizeToolCallResponse) {}
+
+  // Tool: record outcome deduped. Authority: Engine dedup by tool_call_id idempotency. Deadline: 3s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc RecordToolOutcome(neryva.mcp.tool.v1.RecordToolOutcomeRequest) returns (neryva.mcp.tool.v1.RecordToolOutcomeResponse) {}
+
+  // Checkpoint: versioned pointer to artifact. Authority: Engine verifies scope, checksum. Idempotency: required per checkpoint_version. Deadline: 2s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc SaveCheckpointRef(neryva.mcp.checkpoint.v1.SaveCheckpointRequest) returns (neryva.mcp.checkpoint.v1.SaveCheckpointResponse) {}
+
+  // v1.1 Knowledge: agentic mid-run retrieval. Authority: Engine applies
+  // ACL-before-scoring in the query (tenant + visibility), never post-filter.
+  // Results are bounded KnowledgeRefs (snippet max 4 KiB each, ≤ 20 items).
+  // Capability op: search_knowledge. Idempotency: safe read (no key). Deadline: 3s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc SearchKnowledge(neryva.mcp.context.v1.SearchKnowledgeRequest) returns (neryva.mcp.context.v1.SearchKnowledgeResponse) {}
+
+  // v1.1 Compaction: Studio persists a conversation summary it produced with
+  // its own model credentials. Authority: Engine validates scope + bounds and
+  // stores as business truth; the manifest serves the newest summary covering
+  // the compiled window. Capability op: context. Idempotency: required per
+  // (conversation_id, source_sequence). Deadline: 3s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc SaveConversationSummary(neryva.mcp.context.v1.SaveConversationSummaryRequest) returns (neryva.mcp.context.v1.SaveConversationSummaryResponse) {}
+
+  // v1.2 Approval observation: Studio reads the durable decision for an
+  // approval it proposed. Capability op: approval. Idempotency: safe read
+  // (no key). Deadline: 2s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc GetApprovalState(GetApprovalStateRequest) returns (GetApprovalStateResponse) {}
+
+  // v1.2 Human handoff: run-originated escalation via the built-in
+  // `request_human_handoff` tool. Engine opens the escalation, pauses the
+  // auto-responder and emits the lifecycle event in one TX.
+  // Capability op: escalation. Idempotency: one open escalation per
+  // conversation. Deadline: 3s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc RequestHumanHandoff(RequestHumanHandoffRequest) returns (RequestHumanHandoffResponse) {}
+
+  // v1.3 Claim-check write: bounded checkpoint/tool-result artifacts through
+  // the Engine. Capability op: artifact. Idempotency: required. Deadline: 5s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc PutRunArtifact(PutRunArtifactRequest) returns (PutRunArtifactResponse) {}
+
+  // v1.3 Latest checkpoint read for resume-from-checkpoint (FL-2.17).
+  // Capability op: checkpoint. Safe read. Deadline: 2s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc GetLatestCheckpoint(GetLatestCheckpointRequest) returns (GetLatestCheckpointResponse) {}
+
+  // v1.3 Scoped tool-credential disclosure for the HTTP tool executor
+  // (FL-2.10). Capability op: tool. Audited. Deadline: 2s.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc GetToolCredential(GetToolCredentialRequest) returns (GetToolCredentialResponse) {}
+}
+
+// --- RunObservationService (Engine implements, frontend consumes) ---
+message ListRunEventsRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  uint64 after_sequence = 2;
+  neryva.mcp.common.v1.PageRequest page = 3;
+}
+
+message ListRunEventsResponse {
+  repeated neryva.mcp.event.v1.RunEvent events = 1;
+  neryva.mcp.common.v1.PageResponse page = 2;
+}
+
+message WatchRunEventsRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  uint64 after_sequence = 2;
+}
+
+message WatchRunEventsResponse {
+  neryva.mcp.event.v1.RunEvent event = 1 [(buf.validate.field).required = true];
+}
+
+service RunObservationService {
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc GetRun(GetRunRequest) returns (GetRunResponse) {}
+  rpc ListRunEvents(ListRunEventsRequest) returns (ListRunEventsResponse) {}
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc WatchRunEvents(WatchRunEventsRequest) returns (stream WatchRunEventsResponse) {}
+  rpc GetRunArtifact(GetRunArtifactRequest) returns (GetRunArtifactResponse) {}
+}
+
+message GetRunArtifactRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string artifact_id = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetRunArtifactResponse {
+  neryva.mcp.common.v1.ArtifactRef artifact = 1 [(buf.validate.field).required = true];
+  // Presigned URL or proxy stream hint. Opaque capability, not general object-storage URL.
+  string access_url = 2;
+}

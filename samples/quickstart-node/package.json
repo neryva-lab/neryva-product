@@ -1,0 +1,7 @@
+{
+  "name": "@neryva/samples-quickstart-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Neryva quickstart — Node sample over the L2 public API (FL-3.16). Standalone; not part of the Studio workspace build."
+}

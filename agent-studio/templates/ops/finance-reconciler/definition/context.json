@@ -1,0 +1,6 @@
+{
+  "history_limit": 25,
+  "summary_enabled": true,
+  "knowledge_sources": ["close-checklists"],
+  "memory_scope": "none"
+}

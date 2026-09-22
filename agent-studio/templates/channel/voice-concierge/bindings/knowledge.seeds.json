@@ -1,0 +1,4 @@
+{
+  "required": ["brand-docs"],
+  "notes": "Short speakable answers need the same approved corpus as the brand concierge."
+}

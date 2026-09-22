@@ -1,0 +1,25 @@
+{
+  "name": "@neryva/neryva-mcp-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generated @neryva/mcp-contract + interceptors + claim-check",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "2.14.1",
+    "@connectrpc/connect": "2.1.2",
+    "@connectrpc/connect-node": "2.1.2",
+    "@neryva/agent-kernel": "workspace:*",
+    "@neryva/contracts": "workspace:*",
+    "@neryva/security": "workspace:*",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.0"
+  }
+}

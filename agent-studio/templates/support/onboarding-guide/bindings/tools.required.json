@@ -1,0 +1,14 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Fetch each step's canonical instructions and verification check from getting-started docs."
+    },
+    {
+      "name": "request_human_handoff",
+      "built_in": true,
+      "when_to_use": "User stuck twice on the same step — hand off with step history, never loop forever."
+    }
+  ]
+}

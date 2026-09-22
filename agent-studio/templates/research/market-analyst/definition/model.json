@@ -1,0 +1,9 @@
+{
+  "allowed_models": ["anthropic/claude-sonnet-4-5"],
+  "fallback_enabled": true,
+  "model_params": {
+    "temperature": 0.2,
+    "max_output_tokens": 2048,
+    "output_schema": "{\"type\":\"object\",\"required\":[\"market\",\"figures\",\"trends\",\"unknowns\"],\"properties\":{\"market\":{\"type\":\"object\"},\"figures\":{\"type\":\"array\"},\"trends\":{\"type\":\"array\"},\"unknowns\":{\"type\":\"array\"}}}"
+  }
+}

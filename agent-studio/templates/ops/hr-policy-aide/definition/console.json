@@ -1,0 +1,13 @@
+{
+  "max_context_tokens": 40000,
+  "retrieval_policy": {
+    "knowledge_max_results": 4,
+    "memory_max_results": 0,
+    "hybrid_retrieval": true
+  },
+  "brand": {
+    "voice": "hr-careful",
+    "disclaimers": ["hr-general-info"],
+    "handoff": { "offer_first": true, "warm_transfer": true }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "input_policy": "default",
+  "output_policy": "default",
+  "pii_redaction": true
+}

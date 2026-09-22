@@ -1,0 +1,10 @@
+{
+  "requestId": "0191a2b3-c4d5-7e6f-8a90-b1c2d3e4f5a6",
+  "organizationId": "org_123",
+  "conversationId": "conv_123",
+  "runId": "run_123",
+  "actorId": "actor_123",
+  "idempotencyKey": "idem_abc123",
+  "protocolVersion": "1.0",
+  "capabilityId": "cap_123"
+}

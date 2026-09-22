@@ -1,0 +1,18 @@
+{
+  "name": "@neryva/testkit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "fake-mcp-engine, fake-model, temporal-test-env, fault-injection",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "uuid": "^11.1.0"
+  }
+}

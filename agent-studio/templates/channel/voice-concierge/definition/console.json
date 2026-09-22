@@ -1,0 +1,13 @@
+{
+  "max_context_tokens": 20000,
+  "retrieval_policy": {
+    "knowledge_max_results": 4,
+    "memory_max_results": 0,
+    "hybrid_retrieval": false
+  },
+  "brand": {
+    "voice": "warm-brief-phone",
+    "disclaimers": [],
+    "handoff": { "offer_first": false, "warm_transfer": true }
+  }
+}

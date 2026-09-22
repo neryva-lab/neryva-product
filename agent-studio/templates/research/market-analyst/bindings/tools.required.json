@@ -1,0 +1,14 @@
+{
+  "required": [
+    {
+      "name": "web_search",
+      "built_in": true,
+      "when_to_use": "Public market signals, sizing reports, and trend evidence — always sourced with dates."
+    },
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Internal research archive and prior briefs to avoid duplicating work."
+    }
+  ]
+}

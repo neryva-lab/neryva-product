@@ -1,0 +1,19 @@
+slug: brand-concierge
+version: 1.0.0
+status: stable
+family: brand
+name: Brand Concierge
+tagline: Organization-branded front-door assistant
+icon: headphones
+tone: lilac
+categories:
+  - support
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 6d0551566274698e235d5981880850b4615bac96ba2ee30e9052e79b2eee2638

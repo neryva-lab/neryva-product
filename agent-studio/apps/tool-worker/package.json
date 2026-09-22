@@ -1,0 +1,12 @@
+{
+  "name": "@neryva/tool-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional isolated tool pool (sandbox)",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js"
+  }
+}

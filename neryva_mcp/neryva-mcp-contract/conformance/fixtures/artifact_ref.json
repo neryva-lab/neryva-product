@@ -1,0 +1,10 @@
+{
+  "artifactId": "art_abcdef123456",
+  "uri": "artifact://org_123/art_abcdef123456",
+  "mediaType": "application/json",
+  "byteLength": "1024",
+  "sha256": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+  "encryptionKeyId": "key-default",
+  "purpose": "tool_output",
+  "expiresAt": "2026-09-01T12:00:00Z"
+}

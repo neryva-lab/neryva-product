@@ -1,0 +1,22 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Service price book and procedures before any number or step."
+    },
+    {
+      "name": "generate_quote",
+      "effect_class": "MUTATING",
+      "approval_requirement": "REQUIRED",
+      "rate_limit_per_run": 1,
+      "when_to_use": "On-site quote exactly once after explicit approval of items + total."
+    },
+    {
+      "name": "create_meeting",
+      "effect_class": "MUTATING",
+      "approval_requirement": "REQUIRED",
+      "when_to_use": "Follow-up visits the job can't finish today, after slot confirmation."
+    }
+  ]
+}

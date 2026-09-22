@@ -1,0 +1,122 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md",
+    "docs/architecture/main.md",
+    "docs/architecture/agent_studio/agent_studio_architecture.md",
+    "docs/architecture/agent_studio/agent_studio_implementation_plan.md",
+    "docs/architecture/agent_studio/imp/ledger.md",
+    "docs/architecture/neryva_mcp/neryva_mcp_implementation_plan.md",
+    "docs/architecture/engine/engine_architecture.md"
+  ],
+  "references": {
+    "architecture": {
+      "path": "docs/architecture",
+      "description": "Authoritative system, engine, agent-studio, and Neryva MCP architecture and implementation plans. Read ledger.md:1 before any task."
+    },
+    "studio-src": {
+      "path": "packages",
+      "description": "Agent Studio source — kernel, gateways, workflows, activities. Enforce DAG contracts→kernel→gateways→activities→workflows→apps."
+    },
+    "mcp-contract": {
+      "path": "../neryva_mcp/neryva-mcp-contract",
+      "description": "Neryva MCP contract neryva.mcp.v1 proto at sibling — generated types only via buf generate, never hand-copy. Check before MCP client."
+    },
+    "engine": {
+      "path": "../../engine",
+      "description": "Engine control plane — reference for ownership, RLS, outbox pattern, and conversational authority. Studio has no DB credentials."
+    },
+    "ledger": {
+      "path": "docs/architecture/agent_studio/imp/ledger.md",
+      "description": "Phase-gated task ledger — single source for execution order. One task ID per PR."
+    }
+  },
+  "skills": {
+    "paths": [".opencode/skills", ".agents/skills"]
+  },
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "*": "ask",
+      "pnpm *": "allow",
+      "npm *": "allow",
+      "npx *": "allow",
+      "buf *": "allow",
+      "git status": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "git branch*": "allow",
+      "ls *": "allow",
+      "cat *": "allow",
+      "node *": "allow",
+      "tsc *": "allow",
+      "eslint *": "allow",
+      "prettier *": "allow",
+      "vitest *": "allow",
+      "rm -rf node_modules": "deny",
+      "rm -rf .git": "deny",
+      "rm -rf packages": "deny",
+      "rm -rf apps": "deny"
+    },
+    "external_directory": "allow",
+    "skill": "allow",
+    "webfetch": "allow",
+    "websearch": "allow"
+  },
+  "agent": {
+    "build": {
+      "description": "Production implementation agent — full codebase access, strict enterprise gates, ledger phase enforcement",
+      "mode": "primary",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow",
+        "skill": "allow"
+      }
+    },
+    "plan": {
+      "description": "Read-only planning and architecture review — no edits, no bash mutations, verifies ledger gates and ADRs",
+      "mode": "primary",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git status": "allow",
+          "git diff*": "allow",
+          "git log*": "allow"
+        },
+        "skill": "allow"
+      }
+    }
+  },
+  "provider": {
+    "agentrouter": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "AgentRouter (OpenAI Compatible)",
+      "options": {
+        "baseURL": "https://agentrouter.org/v1",
+        "apiKey": "{env:AGENTROUTER_API_KEY}"
+      },
+      "models": {
+        "deepseek-v4-flash": { "name": "deepseek-v4-flash" },
+        "glm-5.3": { "name": "glm-5.3" }
+      }
+    }
+  },
+  "model": "agentrouter/deepseek-v4-flash",
+  "formatter": {
+    "prettier": {
+      "command": ["npx", "prettier", "--write"],
+      "extensions": [".ts", ".js", ".json", ".md"]
+    }
+  },
+  "lsp": {
+    "typescript": {
+      "command": ["npx", "typescript-language-server", "--stdio"],
+      "extensions": [".ts", ".js"]
+    }
+  },
+  "share": "disabled",
+  "autoupdate": "notify",
+  "tool_output": { "max_lines": 2000, "max_bytes": 51200 },
+  "compaction": { "auto": true, "tail_turns": 15 }
+}

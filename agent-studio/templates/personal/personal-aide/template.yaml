@@ -1,0 +1,19 @@
+slug: personal-aide
+version: 1.0.0
+status: stable
+family: personal
+name: Personal Aide
+tagline: Per-user productivity aide with memory and approvals
+icon: user
+tone: azure
+categories:
+  - personal
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 97d594235ad9d2fa27a52fbd253434b4ad91844245c7b7b910d9a5636ee98c40

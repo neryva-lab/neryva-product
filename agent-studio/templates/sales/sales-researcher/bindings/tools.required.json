@@ -1,0 +1,14 @@
+{
+  "required": [
+    {
+      "name": "web_search",
+      "built_in": true,
+      "when_to_use": "Public company, role, and signal research — read-only, always sourced."
+    },
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Internal account context, battlecards, and playbook positioning."
+    }
+  ]
+}

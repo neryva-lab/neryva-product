@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package neryva.mcp.runtime.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "neryva/mcp/common/v1/common.proto";
+
+// RuntimeControlService is implemented by Agent Studio and called by Engine control workers.
+// Deterministic Workflow ID = run_id ensures duplicate StartRun does not create second workflow.
+// Reference: neryva_mcp_implementation_plan.md:336-348
+enum RunInputKind {
+  RUN_INPUT_KIND_UNSPECIFIED = 0;
+  RUN_INPUT_KIND_APPROVAL_DECISION = 1;
+  RUN_INPUT_KIND_USER_MESSAGE = 2;
+  RUN_INPUT_KIND_ADMIN_RESUME = 3;
+}
+
+message StartRunRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string assistant_version_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).required = true
+  ];
+  string input_message_id = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).required = true
+  ];
+  int64 expected_conversation_version = 4 [(buf.validate.field).int64.gte = 0];
+  // Short-lived capability token (compact proof of scope, not replacement for Engine authz).
+  string capability_token = 5 [(buf.validate.field).string.min_len = 1];
+  // Idempotency: caller must set ctx.idempotency_key; server dedups on (run_id, key).
+}
+
+message StartRunResponse {
+  string workflow_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).required = true
+  ];
+  bool already_started = 2;
+  string run_id = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message CancelRunRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string reason = 2 [(buf.validate.field).string.max_len = 512];
+}
+
+message CancelRunResponse {
+  bool accepted = 1;
+  string run_id = 2;
+}
+
+message DeliverRunInputRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string input_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).required = true
+  ];
+  RunInputKind kind = 3 [(buf.validate.field).enum.defined_only = true];
+  // Small typed payload; large attachments via ArtifactRef.
+  bytes payload = 4 [(buf.validate.field).bytes.max_len = 65536];
+  neryva.mcp.common.v1.ArtifactRef payload_ref = 5;
+}
+
+message DeliverRunInputResponse {
+  bool delivered = 1;
+  // Neryva MCP response = durable delivery/acceptance, not workflow completion.
+  google.protobuf.Timestamp accepted_at = 2 [(buf.validate.field).required = true];
+}
+
+message GetRuntimeStatusRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+}
+
+message GetRuntimeStatusResponse {
+  string run_id = 1;
+  string workflow_id = 2;
+  string state = 3;
+  google.protobuf.Timestamp lease_expires_at = 4;
+  bool is_draining = 5;
+}
+
+message DrainRuntimeRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string reason = 2;
+}
+
+message DrainRuntimeResponse {
+  bool draining = 1;
+}
+
+service RuntimeControlService {
+  rpc StartRun(StartRunRequest) returns (StartRunResponse) {}
+  rpc CancelRun(CancelRunRequest) returns (CancelRunResponse) {}
+  rpc DeliverRunInput(DeliverRunInputRequest) returns (DeliverRunInputResponse) {}
+  rpc GetRuntimeStatus(GetRuntimeStatusRequest) returns (GetRuntimeStatusResponse) {}
+  rpc DrainRuntime(DrainRuntimeRequest) returns (DrainRuntimeResponse) {}
+}

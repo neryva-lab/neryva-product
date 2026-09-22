@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package neryva.mcp.approval.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "neryva/mcp/common/v1/common.proto";
+
+enum ApprovalState {
+  APPROVAL_STATE_UNSPECIFIED = 0;
+  APPROVAL_STATE_PENDING = 1;
+  APPROVAL_STATE_APPROVED = 2;
+  APPROVAL_STATE_DENIED = 3;
+  APPROVAL_STATE_EXPIRED = 4;
+}
+
+message ApprovalRequest {
+  string approval_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).required = true
+  ];
+  string organization_id = 2 [(buf.validate.field).string.min_len = 1];
+  string run_id = 3 [(buf.validate.field).string.min_len = 1];
+  string summary = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 512,
+    (buf.validate.field).required = true
+  ];
+  string action_type = 5 [(buf.validate.field).string.min_len = 1];
+  string policy_version = 6 [(buf.validate.field).string.min_len = 1];
+  ApprovalState state = 7 [(buf.validate.field).enum.defined_only = true];
+  google.protobuf.Timestamp expires_at = 8 [(buf.validate.field).required = true];
+  // Redacted args or secure artifact ref — never raw secrets.
+  neryva.mcp.common.v1.ArtifactRef redacted_ref = 9;
+  string decision_actor_id = 10;
+  google.protobuf.Timestamp decided_at = 11;
+  // One-time decision ID prevents replay.
+  string decision_id = 12;
+}
+
+message CreateApprovalRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  ApprovalRequest approval = 2 [(buf.validate.field).required = true];
+}
+
+message CreateApprovalResponse {
+  ApprovalRequest approval = 1 [(buf.validate.field).required = true];
+}
+
+service ApprovalService {
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc CreateApproval(CreateApprovalRequest) returns (CreateApprovalResponse) {}
+}

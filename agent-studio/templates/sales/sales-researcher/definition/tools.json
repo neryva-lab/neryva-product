@@ -1,0 +1,6 @@
+{
+  "tools": [
+    { "name": "web_search", "access": "read", "approval": "optional" },
+    { "name": "search_knowledge", "access": "read", "approval": "optional" }
+  ]
+}

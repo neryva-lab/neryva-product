@@ -1,0 +1,15 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Qualification criteria and objection handling from the playbook."
+    },
+    {
+      "name": "create_meeting",
+      "effect_class": "MUTATING",
+      "approval_requirement": "REQUIRED",
+      "when_to_use": "Book only qualified leads after explicit slot confirmation; state time + attendees + duration first."
+    }
+  ]
+}

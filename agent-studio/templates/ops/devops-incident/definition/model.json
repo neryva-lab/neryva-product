@@ -1,0 +1,8 @@
+{
+  "allowed_models": ["anthropic/claude-sonnet-4-5"],
+  "fallback_enabled": false,
+  "model_params": {
+    "temperature": 0.1,
+    "max_output_tokens": 1024
+  }
+}

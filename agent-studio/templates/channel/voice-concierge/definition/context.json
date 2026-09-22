@@ -1,0 +1,6 @@
+{
+  "history_limit": 15,
+  "summary_enabled": false,
+  "knowledge_sources": ["brand-docs"],
+  "memory_scope": "conversation"
+}

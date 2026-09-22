@@ -1,0 +1,13 @@
+{
+  "max_context_tokens": 50000,
+  "retrieval_policy": {
+    "knowledge_max_results": 4,
+    "memory_max_results": 2,
+    "hybrid_retrieval": true
+  },
+  "brand": {
+    "voice": "cs-warm",
+    "disclaimers": [],
+    "handoff": { "offer_first": true, "warm_transfer": true }
+  }
+}

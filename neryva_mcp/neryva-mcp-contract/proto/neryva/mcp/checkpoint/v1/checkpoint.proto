@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package neryva.mcp.checkpoint.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "neryva/mcp/common/v1/common.proto";
+
+// Checkpoint must be loadable by replacement worker under same authorization.
+// Temporal history contains refs, not large values.
+// Reference: neryva_mcp_implementation_plan.md:116, 363
+message SaveCheckpointRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string checkpoint_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).required = true
+  ];
+  uint64 checkpoint_version = 3 [(buf.validate.field).uint64.gte = 1];
+  neryva.mcp.common.v1.ArtifactRef artifact_ref = 4 [(buf.validate.field).required = true];
+  bytes digest = 5 [
+    (buf.validate.field).bytes.len = 32,
+    (buf.validate.field).required = true
+  ];
+  google.protobuf.Timestamp created_at = 6 [(buf.validate.field).required = true];
+}
+
+message SaveCheckpointResponse {
+  bool accepted = 1;
+  string checkpoint_id = 2;
+}
+
+service CheckpointService {
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc SaveCheckpoint(SaveCheckpointRequest) returns (SaveCheckpointResponse) {}
+}

@@ -1,0 +1,6 @@
+{
+  "tools": [
+    { "name": "search_knowledge", "access": "read", "approval": "optional" },
+    { "name": "request_human_handoff", "access": "write", "approval": "optional" }
+  ]
+}

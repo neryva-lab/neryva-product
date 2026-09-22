@@ -1,0 +1,28 @@
+{
+  "name": "@neryva/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./provider/*": {
+      "types": "./dist/provider/*.d.ts",
+      "default": "./dist/provider/*.js"
+    },
+    "./tool/*": {
+      "types": "./dist/tool/*.d.ts",
+      "default": "./dist/tool/*.js"
+    },
+    "./agent-definition/*": {
+      "types": "./dist/agent-definition/*.d.ts",
+      "default": "./dist/agent-definition/*.js"
+    },
+    "./events/*": {
+      "types": "./dist/events/*.d.ts",
+      "default": "./dist/events/*.js"
+    },
+    "./mcp/*": {
+      "types": "./dist/mcp/*.d.ts",
+      "default": "./dist/mcp/*.js"
+    }
+  }
+}

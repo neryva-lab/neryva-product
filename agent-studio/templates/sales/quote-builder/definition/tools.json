@@ -1,0 +1,6 @@
+{
+  "tools": [
+    { "name": "search_knowledge", "access": "read", "approval": "optional" },
+    { "name": "generate_quote", "access": "write", "approval": "required" }
+  ]
+}

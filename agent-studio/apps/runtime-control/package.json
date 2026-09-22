@@ -1,0 +1,26 @@
+{
+  "name": "@neryva/runtime-control",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internal health/readiness/audited operator controls (stateless)",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@neryva/agent-definition": "workspace:*",
+    "@neryva/contracts": "workspace:*",
+    "@neryva/model-gateway": "workspace:*",
+    "@temporalio/client": "^1.23.0",
+    "zod": "^3.24.0",
+    "@connectrpc/connect": "^2.1.2",
+    "@connectrpc/connect-node": "^2.1.2",
+    "@neryva/neryva-mcp-client": "workspace:*",
+    "@neryva/context-compiler": "workspace:*",
+    "@neryva/tool-gateway": "workspace:*",
+    "@neryva/security": "workspace:*",
+    "@neryva/telemetry": "workspace:*"
+  }
+}

@@ -1,0 +1,19 @@
+slug: voice-concierge
+version: 1.0.0
+status: stable
+family: channel
+name: Voice Concierge
+tagline: Phone front-door with spoken format and clean handoffs
+icon: phone
+tone: lilac
+categories:
+  - support
+models_default: anthropic/claude-haiku-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 6b0570d864306e71d148ca69a93ed8128a1f772830f4123a19154024570bb509

@@ -1,0 +1,9 @@
+{
+  "allowed_models": ["anthropic/claude-sonnet-4-5"],
+  "fallback_enabled": true,
+  "model_params": {
+    "temperature": 0.1,
+    "max_output_tokens": 1536,
+    "output_schema": "{\"type\":\"object\",\"required\":[\"line_items\",\"subtotal\",\"discount\",\"total\"],\"properties\":{\"line_items\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"item\",\"qty\",\"unit\",\"total\"]}},\"subtotal\":{\"type\":\"number\"},\"discount\":{\"type\":\"object\"},\"total\":{\"type\":\"number\"}}}"
+  }
+}

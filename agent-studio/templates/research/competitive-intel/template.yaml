@@ -1,0 +1,19 @@
+slug: competitive-intel
+version: 1.0.0
+status: beta
+family: research
+name: Competitive Intel
+tagline: Competitor tracking with a two-source rule
+icon: crosshair
+tone: azure
+categories:
+  - research
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: ''

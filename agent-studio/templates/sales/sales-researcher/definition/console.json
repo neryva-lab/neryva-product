@@ -1,0 +1,13 @@
+{
+  "max_context_tokens": 60000,
+  "retrieval_policy": {
+    "knowledge_max_results": 6,
+    "memory_max_results": 0,
+    "hybrid_retrieval": true
+  },
+  "brand": {
+    "voice": "analyst-crisp",
+    "disclaimers": [],
+    "handoff": { "offer_first": false, "warm_transfer": false }
+  }
+}

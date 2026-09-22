@@ -1,0 +1,14 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Before answering any factual question — retrieve APPROVED brand-docs chunks first, then answer with citations."
+    },
+    {
+      "name": "request_human_handoff",
+      "built_in": true,
+      "when_to_use": "When the request is ambiguous, the customer is frustrated, PII beyond need is involved, or the question is out of scope — hand off with a context packet."
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@neryva/workflows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic AgentRunWorkflow only",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@neryva/agent-kernel": "workspace:*",
+    "@neryva/contracts": "workspace:*",
+    "@temporalio/workflow": "^1.23.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "max_total_tokens": 200000,
+  "max_cost_micros": 50000000,
+  "wall_clock_seconds": 600,
+  "max_tool_calls": 12,
+  "max_model_calls": 6
+}

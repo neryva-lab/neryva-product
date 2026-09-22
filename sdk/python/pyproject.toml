@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neryva"
+version = "0.1.0"
+description = "Neryva public API SDK (L2 conversation plane) — Python client"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Typing :: Typed",
+]
+
+[tool.setuptools]
+packages = ["neryva"]
+
+[tool.setuptools.package-data]
+neryva = ["py.typed"]

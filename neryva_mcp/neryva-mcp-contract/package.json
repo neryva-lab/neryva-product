@@ -1,0 +1,30 @@
+{
+  "name": "@neryva/mcp-contract",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Neryva MCP contract \u2014 Protobuf neryva.mcp.v1, Buf + Protovalidate + ConnectRPC",
+  "type": "module",
+  "scripts": {
+    "lint": "buf lint",
+    "format": "buf format --diff --exit-code",
+    "breaking": "buf breaking --against '.git#branch=main'",
+    "generate": "buf generate",
+    "gen:check": "buf generate && git diff --exit-code gen/ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf gen/ts",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.14.0",
+    "@connectrpc/connect": "^2.0.3",
+    "@connectrpc/connect-node": "^2.0.3",
+    "@bufbuild/protovalidate": "^1.2.0"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.72.0",
+    "typescript": "^5.7.3",
+    "rimraf": "^6.0.1"
+  },
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts"
+}

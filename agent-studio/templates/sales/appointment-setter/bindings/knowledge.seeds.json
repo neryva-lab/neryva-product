@@ -1,0 +1,4 @@
+{
+  "required": ["scheduling-policy"],
+  "notes": "scheduling-policy carries hours, blackouts, durations, and confirmation rules."
+}

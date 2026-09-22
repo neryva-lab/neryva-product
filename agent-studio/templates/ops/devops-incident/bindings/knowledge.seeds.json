@@ -1,0 +1,4 @@
+{
+  "required": ["incident-runbooks"],
+  "notes": "incident-runbooks carries the severity matrix, triage playbooks, and status templates."
+}

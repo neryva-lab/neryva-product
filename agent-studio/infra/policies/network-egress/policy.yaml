@@ -1,0 +1,32 @@
+# network-egress — restricted egress, deny-by-default, allowlist per tool (10.7, 1028)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-studio-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: agent-studio
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app: temporal-frontend
+      ports:
+        - port: 7233
+    - to:
+        - podSelector:
+            matchLabels:
+              app: engine
+      ports:
+        - port: 50051
+  # No broad internet egress — tools requiring egress must use tool-worker with explicit allowlist

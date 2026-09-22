@@ -1,0 +1,19 @@
+slug: quote-builder
+version: 1.0.0
+status: stable
+family: sales
+name: Quote Builder
+tagline: Needs-based quotes with discount policy and PDF proposals
+icon: file-text
+tone: azure
+categories:
+  - sales
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 998678e35821913299cb3f73a9121bbf19244d34bc22070ce602c1fda3d4b9a1

@@ -1,0 +1,13 @@
+{
+  "max_context_tokens": 60000,
+  "retrieval_policy": {
+    "knowledge_max_results": 8,
+    "memory_max_results": 2,
+    "hybrid_retrieval": true
+  },
+  "brand": {
+    "voice": "helpful-direct",
+    "disclaimers": ["workaround-variance"],
+    "handoff": { "offer_first": true, "warm_transfer": true }
+  }
+}

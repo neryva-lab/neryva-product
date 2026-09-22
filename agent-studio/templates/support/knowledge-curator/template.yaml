@@ -1,0 +1,19 @@
+slug: knowledge-curator
+version: 1.0.0
+status: stable
+family: support
+name: Knowledge Curator
+tagline: Drafts help articles from conversations, flags gaps
+icon: book
+tone: neutral
+categories:
+  - support
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 026f138908743781ad261829b759e70534b9eaef37b22b244cec78c37e1cd55b

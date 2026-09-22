@@ -1,0 +1,19 @@
+slug: lead-qualifier
+version: 1.0.0
+status: stable
+family: sales
+name: Lead Qualifier
+tagline: Discovery questions, then book when qualified
+icon: filter
+tone: azure
+categories:
+  - sales
+models_default: anthropic/claude-haiku-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 1f390c0a06ad32958f75e0394b2130c7b2eb9dcd23736fd212a336e3d2ecb3b1

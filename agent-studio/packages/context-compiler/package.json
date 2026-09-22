@@ -1,0 +1,20 @@
+{
+  "name": "@neryva/context-compiler",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Authorized context assembly, token budgeting, citations",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@neryva/agent-definition": "workspace:*",
+    "@neryva/contracts": "workspace:*",
+    "zod": "^3.24.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run"
+  }
+}

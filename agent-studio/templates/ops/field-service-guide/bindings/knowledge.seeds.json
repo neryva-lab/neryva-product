@@ -1,0 +1,4 @@
+{
+  "required": ["service-price-book"],
+  "notes": "service-price-book carries labor rates, parts, and service procedures."
+}

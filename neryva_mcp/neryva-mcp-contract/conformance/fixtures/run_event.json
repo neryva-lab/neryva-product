@@ -1,0 +1,18 @@
+{
+  "eventId": "evt_123",
+  "runId": "run_123",
+  "stepId": "step_1",
+  "type": "EVENT_TYPE_ASSISTANT_CHUNK",
+  "schemaVersion": "1.0",
+  "producerId": "studio_1",
+  "producerSequence": "1",
+  "expectedRunVersion": "2",
+  "producerTimestamp": "2026-09-01T10:06:00Z",
+  "redaction": "REDACTION_CLASS_NONE",
+  "assistantChunk": {
+    "text": "hello world",
+    "isFinal": false
+  },
+  "sequence": "42",
+  "acceptedAt": "2026-09-01T10:06:01Z"
+}

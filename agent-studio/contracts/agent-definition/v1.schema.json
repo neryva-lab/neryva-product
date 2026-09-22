@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neryva.ai/schemas/agent-definition/v1.json",
+  "title": "Neryva Agent Definition v1",
+  "description": "Immutable declarative agent definition — versioned per agent_id. Every run pinned to one immutable version (agent_studio_architecture.md:394). Never contains secrets, mutable org pointers, or executable code (agent_studio_implementation_plan.md:722).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agent_id",
+    "version",
+    "instructions",
+    "model_policy",
+    "context_policy",
+    "tools",
+    "guardrails"
+  ],
+  "properties": {
+    "agent_id": {
+      "description": "Stable agent identifier, immutable, scoped to organization. Pattern: lowercase alphanumeric with hyphens.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 64,
+      "examples": ["support-agent", "onboarding-agent"]
+    },
+    "version": {
+      "description": "Monotonic version within agent_id, allocated by Engine. Immutable after publish.",
+      "type": "integer",
+      "minimum": 1,
+      "examples": [17]
+    },
+    "schema_version": {
+      "description": "Definition schema version, currently v1. Defaults to v1 if omitted for backward compat.",
+      "type": "string",
+      "const": "v1",
+      "default": "v1"
+    },
+    "instructions": {
+      "description": "System instructions for the agent. Treated as declarative content, not executable code. Must not attempt to define Engine authority operations.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000,
+      "examples": [
+        "You are a helpful support assistant for Acme Corp. Follow brand tone and escalation rules."
+      ]
+    },
+    "model_policy": {
+      "description": "Model selection and capability constraints — must reference Model Gateway capability registry (agent_studio_architecture.md:406).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_models"],
+      "properties": {
+        "allowed_models": {
+          "description": "Allowlisted models — each must exist in Model Gateway capability registry. Pattern provider/model.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+/[a-z0-9._-]+$",
+            "examples": ["openai/gpt-4o-mini", "anthropic/claude-3-5-sonnet"]
+          }
+        },
+        "fallback_enabled": {
+          "description": "Whether fallback to next allowed model is permitted on provider failure. Must preserve output/tool/schema compat.",
+          "type": "boolean",
+          "default": false
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128000,
+          "default": 4096
+        }
+      }
+    },
+    "context_policy": {
+      "description": "Context assembly constraints.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["history_limit", "summary_enabled", "knowledge_sources", "memory_scope"],
+      "properties": {
+        "history_limit": {
+          "description": "Maximum conversation history messages to include (before summarization/truncation).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 30
+        },
+        "summary_enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "knowledge_sources": {
+          "description": "Allowlisted knowledge source identifiers — must be authorized for organization.",
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$",
+            "examples": ["support-docs"]
+          }
+        },
+        "memory_scope": {
+          "description": "Memory visibility scope for approved memories.",
+          "type": "string",
+          "enum": ["user", "conversation", "organization", "none"],
+          "default": "user"
+        },
+        "max_context_tokens": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 200000,
+          "default": 32000
+        }
+      }
+    },
+    "tools": {
+      "description": "Allowlisted tools for this agent. Runtime registry resolves version and enforces effect/approval policy.",
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "access"],
+        "properties": {
+          "name": {
+            "description": "Tool identifier — must exist in tool registry (contracts/tool/descriptor.ts).",
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$",
+            "minLength": 2,
+            "maxLength": 64,
+            "examples": ["search_tickets", "create_ticket"]
+          },
+          "access": {
+            "description": "Requested access level. READ vs WRITE is distinct from approval requirement.",
+            "type": "string",
+            "enum": ["read", "write"]
+          },
+          "approval": {
+            "description": "Whether human approval is required. Orthogonal to access — read can require approval for confidentiality.",
+            "type": "string",
+            "enum": ["required", "none"],
+            "default": "none"
+          }
+        }
+      }
+    },
+    "guardrails": {
+      "description": "Safety and brand policies.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_policy", "output_policy", "pii_redaction"],
+      "properties": {
+        "input_policy": {
+          "type": "string",
+          "enum": ["default", "strict", "permissive"],
+          "default": "default"
+        },
+        "output_policy": {
+          "type": "string",
+          "enum": ["brand-safe", "default", "strict"],
+          "default": "brand-safe"
+        },
+        "pii_redaction": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "budget_policy": {
+      "description": "Run budgets — bounded, observable workflows (agent_studio_architecture.md:338-350).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_model_calls": { "type": "integer", "minimum": 1, "maximum": 32, "default": 8 },
+        "max_tool_calls": { "type": "integer", "minimum": 0, "maximum": 32, "default": 8 },
+        "max_wall_clock_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 3600000,
+          "default": 120000
+        },
+        "max_token_budget": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 1000000,
+          "default": 50000
+        },
+        "max_cost_cents": { "type": "integer", "minimum": 1, "maximum": 100000, "default": 1000 },
+        "max_recursion_depth": { "type": "integer", "minimum": 1, "maximum": 16, "default": 5 }
+      }
+    },
+    "retrieval_policy": {
+      "description": "Memory/knowledge retrieval constraints.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "knowledge_max_results": { "type": "integer", "minimum": 1, "maximum": 20, "default": 5 },
+        "memory_max_results": { "type": "integer", "minimum": 0, "maximum": 20, "default": 5 },
+        "hybrid_retrieval": { "type": "boolean", "default": false }
+      }
+    }
+  },
+  "examples": [
+    {
+      "agent_id": "support-agent",
+      "version": 17,
+      "schema_version": "v1",
+      "instructions": "You are a helpful support assistant for Acme Corp. Follow brand tone and escalation rules.",
+      "model_policy": {
+        "allowed_models": ["openai/gpt-4o-mini", "anthropic/claude-3-5-sonnet"],
+        "fallback_enabled": true
+      },
+      "context_policy": {
+        "history_limit": 30,
+        "summary_enabled": true,
+        "knowledge_sources": ["support-docs"],
+        "memory_scope": "user"
+      },
+      "tools": [
+        { "name": "search_tickets", "access": "read", "approval": "none" },
+        { "name": "create_ticket", "access": "write", "approval": "required" }
+      ],
+      "guardrails": {
+        "input_policy": "default",
+        "output_policy": "brand-safe",
+        "pii_redaction": true
+      }
+    }
+  ]
+}

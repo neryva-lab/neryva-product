@@ -1,0 +1,28 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Severity matrix and incident runbooks before any severity call."
+    },
+    {
+      "name": "summarize_logs",
+      "effect_class": "READ_ONLY",
+      "approval_requirement": "NONE",
+      "when_to_use": "Failure signature around the incident window — read-only, never production mutation."
+    },
+    {
+      "name": "post_status",
+      "effect_class": "MUTATING",
+      "approval_requirement": "REQUIRED",
+      "when_to_use": "Post the exact confirmed status text (what/when/impact/next check-in)."
+    },
+    {
+      "name": "page_oncall",
+      "effect_class": "DESTRUCTIVE",
+      "approval_requirement": "REQUIRED",
+      "rate_limit_per_run": 1,
+      "when_to_use": "Matrix-matching severity with explicit confirmation only — state who gets paged and why first. Once per run."
+    }
+  ]
+}

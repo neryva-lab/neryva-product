@@ -1,0 +1,6 @@
+{
+  "tools": [
+    { "name": "search_knowledge", "access": "read", "approval": "optional" },
+    { "name": "query_warehouse", "access": "read", "approval": "optional" }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Metric definitions and canonical logic before writing any query."
+    },
+    {
+      "name": "query_warehouse",
+      "effect_class": "READ_ONLY",
+      "approval_requirement": "NONE",
+      "when_to_use": "Every number comes from a bounded read-only query — shown alongside the result, never hidden."
+    }
+  ]
+}

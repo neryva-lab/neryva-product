@@ -1,0 +1,38 @@
+{
+  "name": "@neryva/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Neryva MCP — Engine authority + Studio runtime spike (Phase 0)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:temporal": "vitest run --config vitest.temporal.config.ts",
+    "test:watch": "vitest",
+    "generate": "pnpm --filter @neryva/mcp-contract generate",
+    "contract:lint": "pnpm --filter @neryva/mcp-contract lint",
+    "contract:generate": "pnpm --filter @neryva/mcp-contract generate",
+    "contract:breaking": "pnpm --filter @neryva/mcp-contract exec buf breaking --against '../.git#branch=main'",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.14.0",
+    "@bufbuild/protovalidate": "^1.2.0",
+    "@connectrpc/connect": "^2.0.3",
+    "@connectrpc/connect-node": "^2.0.3",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/uuid": "^10.0.0",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.0",
+    "tsx": "^4.19.2"
+  }
+}

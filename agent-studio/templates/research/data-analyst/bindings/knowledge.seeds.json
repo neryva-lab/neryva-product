@@ -1,0 +1,4 @@
+{
+  "required": ["metric-catalog"],
+  "notes": "metric-catalog carries canonical metric definitions, grains, and freshness notes."
+}

@@ -1,0 +1,6 @@
+{
+  "history_limit": 20,
+  "summary_enabled": true,
+  "knowledge_sources": ["refund-policy"],
+  "memory_scope": "conversation"
+}

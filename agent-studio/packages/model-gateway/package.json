@@ -1,0 +1,22 @@
+{
+  "name": "@neryva/model-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-neutral NeryvaModel* + Vercel AI SDK adapters",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@neryva/contracts": "workspace:*",
+    "@neryva/security": "workspace:*",
+    "@neryva/telemetry": "workspace:*",
+    "ai": "^4.3.0",
+    "zod": "^3.24.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "history_limit": 50,
+  "summary_enabled": true,
+  "knowledge_sources": ["user-docs"],
+  "memory_scope": "user"
+}

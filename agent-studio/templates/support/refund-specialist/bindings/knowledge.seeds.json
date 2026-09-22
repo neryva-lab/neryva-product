@@ -1,0 +1,4 @@
+{
+  "required": ["refund-policy"],
+  "notes": "refund-policy is the binding eligibility text (windows, exclusions, destinations)."
+}

@@ -1,0 +1,8 @@
+{
+  "allowed_models": ["anthropic/claude-haiku-4-5"],
+  "fallback_enabled": true,
+  "model_params": {
+    "temperature": 0.3,
+    "max_output_tokens": 768
+  }
+}

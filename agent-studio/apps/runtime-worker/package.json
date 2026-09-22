@@ -1,0 +1,16 @@
+{
+  "name": "@neryva/runtime-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Temporal workflows + activities (primary)",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@neryva/telemetry": "workspace:*",
+    "zod": "^3.24.0"
+  }
+}

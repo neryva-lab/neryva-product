@@ -1,0 +1,6 @@
+{
+  "tools": [
+    { "name": "search_knowledge", "access": "read", "approval": "optional" },
+    { "name": "draft_article", "access": "write", "approval": "required" }
+  ]
+}

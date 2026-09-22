@@ -1,0 +1,19 @@
+slug: onboarding-guide
+version: 1.0.0
+status: stable
+family: support
+name: Onboarding Guide
+tagline: Step-by-step setup, one step at a time
+icon: compass
+tone: emerald
+categories:
+  - support
+models_default: anthropic/claude-haiku-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 882d7ca8017e8b586b55774d36fda6650070fd7ae8c5ba7c934a1fc7fe638c8c

@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package neryva.mcp.tool.v1;
+
+import "buf/validate/validate.proto";
+import "neryva/mcp/common/v1/common.proto";
+
+// Tool effect classes — effect_class and approval_requirement are orthogonal.
+// Do not model DESTRUCTIVE and HUMAN_APPROVAL_REQUIRED as peers.
+// Reference: neryva_mcp_implementation_plan.md:618-623
+enum ToolEffectClass {
+  TOOL_EFFECT_CLASS_UNSPECIFIED = 0;
+  TOOL_EFFECT_CLASS_READ_ONLY = 1;
+  TOOL_EFFECT_CLASS_MUTATING = 2;
+  TOOL_EFFECT_CLASS_DESTRUCTIVE = 3;
+}
+
+enum ApprovalRequirement {
+  APPROVAL_REQUIREMENT_UNSPECIFIED = 0;
+  APPROVAL_REQUIREMENT_NONE = 1;
+  APPROVAL_REQUIREMENT_REQUIRED = 2;
+}
+
+message AuthorizeToolCallRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string step_id = 2 [(buf.validate.field).string.min_len = 1];
+  string tool_call_id = 3 [(buf.validate.field).string.min_len = 1];
+  string tool_name = 4 [(buf.validate.field).string.min_len = 1];
+  string tool_version = 5 [(buf.validate.field).string.min_len = 1];
+  bytes argument_digest = 6 [
+    (buf.validate.field).bytes.len = 32,
+    (buf.validate.field).required = true
+  ];
+}
+
+message AuthorizeToolCallResponse {
+  bool allowed = 1;
+  string reason = 2;
+  // Short-lived tool capability bound to run_id/step_id/tool_call_id/digest/org/expiry/audience.
+  string tool_capability_token = 3;
+  ApprovalRequirement approval_requirement = 4 [(buf.validate.field).enum.defined_only = true];
+}
+
+message RecordToolOutcomeRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string step_id = 2 [(buf.validate.field).string.min_len = 1];
+  string tool_call_id = 3 [(buf.validate.field).string.min_len = 1];
+  bytes result_digest = 4 [(buf.validate.field).bytes.len = 32];
+  string status = 5 [(buf.validate.field).string.min_len = 1];
+  neryva.mcp.common.v1.ArtifactRef result_ref = 6;
+}
+
+message RecordToolOutcomeResponse {
+  bool accepted = 1;
+  bool was_duplicate = 2;
+}
+
+service ToolService {
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc AuthorizeToolCall(AuthorizeToolCallRequest) returns (AuthorizeToolCallResponse) {}
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc RecordToolOutcome(RecordToolOutcomeRequest) returns (RecordToolOutcomeResponse) {}
+}

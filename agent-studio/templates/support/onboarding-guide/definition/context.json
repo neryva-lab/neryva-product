@@ -1,0 +1,6 @@
+{
+  "history_limit": 40,
+  "summary_enabled": true,
+  "knowledge_sources": ["getting-started"],
+  "memory_scope": "conversation"
+}

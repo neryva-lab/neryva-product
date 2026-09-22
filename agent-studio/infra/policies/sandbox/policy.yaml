@@ -1,0 +1,19 @@
+# sandbox policy — isolated network/CPU/FS for customer-authored code, untrusted parsers, high CPU tools (10.7)
+# Source: 400-405, 1018-1029, 636-644
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sandbox-policy
+data:
+  policy.json: |
+    {
+      "workloadIdentity": "tool-worker-sandbox",
+      "filesystemIsolation": "readOnlyRoot + emptyDir /tmp",
+      "cpuLimit": "500m",
+      "memoryLimit": "512Mi",
+      "timeoutMs": 30000,
+      "networkEgress": "deny-by-default",
+      "allowedEgress": [],
+      "ambientCredentials": "none",
+      "audit": true
+    }

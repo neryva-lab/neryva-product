@@ -1,0 +1,6 @@
+{
+  "tools": [
+    { "name": "search_knowledge", "access": "read", "approval": "optional" },
+    { "name": "create_meeting", "access": "write", "approval": "required" }
+  ]
+}

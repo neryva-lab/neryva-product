@@ -1,0 +1,57 @@
+# tool-worker.yaml — isolated pool for expensive/privileged tools (10.7)
+# Source: 536-547, 400-405,636-644: dedicated pools for expensive/privileged tools, isolated network/CPU/FS
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tool-worker
+  labels:
+    app: agent-studio
+    tier: tool-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: agent-studio
+      tier: tool-worker
+  template:
+    metadata:
+      labels:
+        app: agent-studio
+        tier: tool-worker
+      annotations:
+        workload-identity: tool-worker
+    spec:
+      serviceAccountName: tool-worker
+      containers:
+        - name: tool-worker
+          image: neryva/agent-studio-tool-worker:0.1.0
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          env:
+            - name: TOOL_GATEWAY_SANDBOX_ENDPOINT
+              value: "http://sandbox:8000"
+            - name: TOOL_GATEWAY_EGRESS_MODE
+              value: "deny-by-default"
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tool-worker
+spec:
+  selector:
+    app: agent-studio
+    tier: tool-worker
+  ports:
+    - port: 8080
+      targetPort: 8080

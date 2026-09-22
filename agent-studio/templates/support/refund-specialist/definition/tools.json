@@ -1,0 +1,8 @@
+{
+  "tools": [
+    { "name": "search_knowledge", "access": "read", "approval": "optional" },
+    { "name": "get_order", "access": "read", "approval": "optional" },
+    { "name": "process_refund", "access": "write", "approval": "required" },
+    { "name": "request_human_handoff", "access": "write", "approval": "optional" }
+  ]
+}

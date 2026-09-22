@@ -1,0 +1,14 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Handbook sections before any policy answer — quote, don't paraphrase from memory."
+    },
+    {
+      "name": "request_human_handoff",
+      "built_in": true,
+      "when_to_use": "Personal records and legal-adjacent cases route to HR humans with the question attached."
+    }
+  ]
+}

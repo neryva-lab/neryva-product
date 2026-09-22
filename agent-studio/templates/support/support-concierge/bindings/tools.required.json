@@ -1,0 +1,26 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Retrieve help-center chunks for known issues before drafting any fix."
+    },
+    {
+      "name": "search_tickets",
+      "effect_class": "READ_ONLY",
+      "approval_requirement": "NONE",
+      "when_to_use": "Look up the ticket record before asking the user for anything the ticket already holds."
+    },
+    {
+      "name": "update_ticket",
+      "effect_class": "MUTATING",
+      "approval_requirement": "REQUIRED",
+      "when_to_use": "Write resolution notes or status changes only after explicit user confirmation of the exact text."
+    },
+    {
+      "name": "request_human_handoff",
+      "built_in": true,
+      "when_to_use": "Severity escalation or second failed resolution attempt — hand off with repro steps and history."
+    }
+  ]
+}

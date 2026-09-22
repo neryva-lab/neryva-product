@@ -1,0 +1,4 @@
+{
+  "required": ["price-book"],
+  "notes": "price-book carries SKUs, unit prices, and the discount policy band."
+}

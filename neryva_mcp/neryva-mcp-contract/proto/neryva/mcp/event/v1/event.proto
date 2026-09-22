@@ -1,0 +1,187 @@
+syntax = "proto3";
+
+package neryva.mcp.event.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "neryva/mcp/common/v1/common.proto";
+
+// Event taxonomy — typed oneof, no log strings as contract.
+// Reference: neryva_mcp_implementation_plan.md:477-489
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_RUN_LIFECYCLE = 1;
+  EVENT_TYPE_ASSISTANT_CHUNK = 2;
+  EVENT_TYPE_TOOL_CALL = 3;
+  EVENT_TYPE_TOOL_RESULT = 4;
+  EVENT_TYPE_RETRIEVAL = 5;
+  EVENT_TYPE_APPROVAL = 6;
+  EVENT_TYPE_MEMORY = 7;
+  EVENT_TYPE_CHECKPOINT = 8;
+  EVENT_TYPE_POLICY = 9;
+  EVENT_TYPE_USAGE = 10;
+  EVENT_TYPE_TERMINAL = 11;
+  // v1.3: reasoning/thinking display channel (FL-3.6) — ephemeral-grade
+  // durable event for consumer affordances; redaction class applies.
+  EVENT_TYPE_THINKING = 12;
+  // v1.2 (FL-3.2): generated media artifact is pinned to the run.
+  EVENT_TYPE_MEDIA = 13;
+}
+
+enum RedactionClass {
+  REDACTION_CLASS_UNSPECIFIED = 0;
+  REDACTION_CLASS_NONE = 1;
+  REDACTION_CLASS_PII = 2;
+  REDACTION_CLASS_SECRET = 3;
+}
+
+message RunEvent {
+  // Producer-generated immutable ID. Unique key is (run_id, event_id).
+  string event_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 64,
+    (buf.validate.field).required = true
+  ];
+  string run_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).required = true
+  ];
+  string step_id = 3 [(buf.validate.field).string.max_len = 64];
+  EventType type = 4 [(buf.validate.field).enum.defined_only = true];
+  string schema_version = 5 [(buf.validate.field).string.min_len = 1];
+  string producer_id = 6 [(buf.validate.field).string.min_len = 1];
+  // Producer-local sequence — untrusted, diagnostic only. Engine assigns authoritative sequence.
+  uint64 producer_sequence = 7;
+  // Optional CAS: Engine rejects stale write with ABORTED.
+  int64 expected_run_version = 8;
+  google.protobuf.Timestamp producer_timestamp = 9 [(buf.validate.field).required = true];
+  RedactionClass redaction = 10 [(buf.validate.field).enum.defined_only = true];
+
+  // Typed body. Large payloads use ArtifactRef, not inline bytes.
+  // 14 categories per 477-489 — model, retrieval, approval, memory, checkpoint, policy, usage added (additive, 19..25)
+  oneof body {
+    LifecycleBody lifecycle = 11;
+    AssistantChunkBody assistant_chunk = 12;
+    ToolCallBody tool_call = 13;
+    ToolResultBody tool_result = 14;
+    TerminalBody terminal = 15;
+    ArtifactBody artifact = 16;
+    ModelBody model = 19;
+    RetrievalBody retrieval = 20;
+    ApprovalBody approval = 21;
+    MemoryBody memory = 22;
+    CheckpointBody checkpoint = 23;
+    PolicyBody policy = 24;
+    UsageBody usage = 25;
+    // v1.2 (FL-3.2): a GENERATED_MEDIA artifact was produced for this run.
+    MediaBody media = 26;
+  }
+
+  // Engine-assigned authoritative ordering (per-run monotonic). Set by Engine on accept.
+  uint64 sequence = 17;
+  google.protobuf.Timestamp accepted_at = 18;
+}
+
+message LifecycleBody {
+  string from_state = 1;
+  string to_state = 2;
+  string reason = 3 [(buf.validate.field).string.max_len = 512];
+}
+
+message AssistantChunkBody {
+  string text = 1 [
+    (buf.validate.field).string.max_len = 8192,
+    (buf.validate.field).required = true
+  ];
+  bool is_final = 2;
+  neryva.mcp.common.v1.ArtifactRef coalesced_ref = 3;
+}
+
+message ToolCallBody {
+  string tool_call_id = 1 [(buf.validate.field).string.min_len = 1];
+  string tool_name = 2 [(buf.validate.field).string.min_len = 1];
+  bytes argument_digest = 3 [(buf.validate.field).bytes.len = 32];
+}
+
+message ToolResultBody {
+  string tool_call_id = 1 [(buf.validate.field).string.min_len = 1];
+  bytes result_digest = 2 [(buf.validate.field).bytes.len = 32];
+  string status = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message TerminalBody {
+  string code = 1 [(buf.validate.field).string.min_len = 1];
+  string message = 2 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ArtifactBody {
+  neryva.mcp.common.v1.ArtifactRef ref = 1 [(buf.validate.field).required = true];
+}
+
+message ModelBody {
+  string model_id = 1 [(buf.validate.field).string.min_len = 1];
+  string provider_request_id = 2;
+  neryva.mcp.common.v1.ArtifactRef request_ref = 3;
+  neryva.mcp.common.v1.ArtifactRef response_ref = 4;
+}
+
+// v1.2 (FL-3.2): generated media reference (claim-check to the artifact).
+message MediaBody {
+  string artifact_id = 1 [(buf.validate.field).string.min_len = 1];
+  string media_type = 2 [(buf.validate.field).string.max_len = 100];
+}
+
+message RetrievalBody {
+  string query = 1 [(buf.validate.field).string.max_len = 2048];
+  repeated string document_ids = 2;
+  neryva.mcp.common.v1.ArtifactRef result_ref = 3;
+}
+
+message ApprovalBody {
+  string approval_id = 1 [(buf.validate.field).string.min_len = 1];
+  string state = 2 [(buf.validate.field).string.min_len = 1];
+  string decision_id = 3;
+}
+
+message MemoryBody {
+  string proposal_id = 1 [(buf.validate.field).string.min_len = 1];
+  string scope = 2 [(buf.validate.field).string.min_len = 1];
+  string decision = 3;
+}
+
+message CheckpointBody {
+  string checkpoint_id = 1 [(buf.validate.field).string.min_len = 1];
+  uint64 version = 2;
+  neryva.mcp.common.v1.ArtifactRef ref = 3 [(buf.validate.field).required = true];
+}
+
+message PolicyBody {
+  string policy_version = 1 [(buf.validate.field).string.min_len = 1];
+  string decision = 2 [(buf.validate.field).string.min_len = 1];
+  string reason = 3 [(buf.validate.field).string.max_len = 512];
+}
+
+message UsageBody {
+  string provider = 1 [(buf.validate.field).string.min_len = 1];
+  string model = 2 [(buf.validate.field).string.min_len = 1];
+  uint32 input_tokens = 3;
+  uint32 output_tokens = 4;
+  neryva.mcp.common.v1.ArtifactRef cost_ref = 5;
+}
+
+// AppendRunEvents — bounded batch, deduplicated by (run_id,event_id), Engine sequence authoritative.
+// Reference: neryva_mcp_implementation_plan.md:518-531
+message AppendRunEventsRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  repeated RunEvent events = 2 [
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 32
+  ];
+}
+
+message AppendRunEventsResponse {
+  // Accepted events with authoritative sequence + accepted_at populated.
+  repeated RunEvent accepted = 1;
+  // Count of duplicates (same run_id,event_id) that were not re-inserted.
+  uint32 duplicate_count = 2;
+}

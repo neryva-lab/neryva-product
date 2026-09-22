@@ -1,0 +1,19 @@
+slug: market-analyst
+version: 1.0.0
+status: beta
+family: research
+name: Market Analyst
+tagline: Sourced market briefs with unknowns marked
+icon: chart
+tone: azure
+categories:
+  - research
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: ''

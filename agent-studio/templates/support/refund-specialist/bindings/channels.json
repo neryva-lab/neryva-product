@@ -1,0 +1,6 @@
+{
+  "channels": ["web-widget", "messenger"],
+  "caps": {
+    "web-widget": { "citation_links": true }
+  }
+}

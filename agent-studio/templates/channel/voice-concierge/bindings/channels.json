@@ -1,0 +1,6 @@
+{
+  "channels": ["voice"],
+  "caps": {
+    "voice": { "max_spoken_sentences": 2, "confirm_back": true, "frustration_handoff": true }
+  }
+}

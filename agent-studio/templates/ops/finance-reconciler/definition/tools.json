@@ -1,0 +1,7 @@
+{
+  "tools": [
+    { "name": "search_knowledge", "access": "read", "approval": "optional" },
+    { "name": "get_ledger_entries", "access": "read", "approval": "optional" },
+    { "name": "draft_journal_entry", "access": "write", "approval": "required" }
+  ]
+}

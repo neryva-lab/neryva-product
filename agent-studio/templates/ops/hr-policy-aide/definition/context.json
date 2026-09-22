@@ -1,0 +1,6 @@
+{
+  "history_limit": 15,
+  "summary_enabled": false,
+  "knowledge_sources": ["hr-handbook"],
+  "memory_scope": "none"
+}

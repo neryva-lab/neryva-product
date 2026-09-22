@@ -1,0 +1,19 @@
+slug: sales-researcher
+version: 1.0.0
+status: stable
+family: sales
+name: Sales Researcher
+tagline: Prospect briefs with unknowns marked, never filled
+icon: search
+tone: azure
+categories:
+  - sales
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: ef08b7ecdb13a2eda2ad7f123f26bb9f9cef4f086521d039f03167f7caf106a3

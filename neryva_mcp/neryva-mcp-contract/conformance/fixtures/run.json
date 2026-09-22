@@ -1,0 +1,13 @@
+{
+  "runId": "run_123",
+  "organizationId": "org_123",
+  "conversationId": "conv_123",
+  "assistantVersionId": "asst_v1",
+  "state": "RUN_STATE_RUNNING",
+  "version": "2",
+  "leaseEpoch": "1",
+  "createdAt": "2026-09-01T10:00:00Z",
+  "updatedAt": "2026-09-01T10:05:00Z",
+  "leaseOwner": "worker_abc",
+  "leaseExpiresAt": "2026-09-01T10:35:00Z"
+}

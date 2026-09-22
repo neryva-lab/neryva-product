@@ -1,0 +1,19 @@
+slug: support-concierge
+version: 1.0.0
+status: stable
+family: support
+name: Support Concierge
+tagline: Tier-1 resolution and escalation with ticket updates
+icon: lifebuoy
+tone: emerald
+categories:
+  - support
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 72102a7df787cc9409284b4ad98d342ffb8bab63e9de72274217b8c5be5d60ee

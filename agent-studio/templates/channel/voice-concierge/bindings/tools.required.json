@@ -1,0 +1,14 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Retrieve the answer chunk before speaking any fact — callers can't see citations."
+    },
+    {
+      "name": "request_human_handoff",
+      "built_in": true,
+      "when_to_use": "Frustration, silence twice, abuse, or past two exchanges — hand off with captured intent, never a third attempt."
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "required": ["close-checklists"],
+  "notes": "close-checklists carries period procedures, account mappings, and materiality notes."
+}

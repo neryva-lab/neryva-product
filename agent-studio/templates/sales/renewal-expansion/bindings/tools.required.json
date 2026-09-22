@@ -1,0 +1,15 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Account playbooks and expansion criteria before any outreach turn."
+    },
+    {
+      "name": "schedule_meeting",
+      "effect_class": "MUTATING",
+      "approval_requirement": "REQUIRED",
+      "when_to_use": "Agreed follow-ups only, after explicit confirmation of time and attendees."
+    }
+  ]
+}

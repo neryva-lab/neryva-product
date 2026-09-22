@@ -1,0 +1,4 @@
+{
+  "required": ["it-runbooks"],
+  "notes": "it-runbooks is the org-wide IT corpus (password/access/provision/hardware runbooks)."
+}

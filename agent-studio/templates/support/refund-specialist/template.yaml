@@ -1,0 +1,19 @@
+slug: refund-specialist
+version: 1.0.0
+status: stable
+family: support
+name: Refund Specialist
+tagline: Policy-bounded refunds with verified reasoning
+icon: receipt
+tone: emerald
+categories:
+  - support
+models_default: anthropic/claude-sonnet-4-5
+locales:
+  - en
+authors:
+  - neryva-templates
+license: proprietary
+replaces: null
+min_engine_schema: 2
+hash: 6fe96a38bbc62e385c9a3cd15ea204b266b17985796b8f907e18b7be7d9be7c6

@@ -1,0 +1,4 @@
+{
+  "required": ["help-center"],
+  "notes": "help-center is the approved support corpus (guides, troubleshooting, known issues)."
+}

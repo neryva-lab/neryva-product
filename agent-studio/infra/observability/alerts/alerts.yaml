@@ -1,0 +1,30 @@
+# alerts — 10.9 measured SLOs, not copied (772)
+groups:
+  - name: agent-studio
+    interval: 30s
+    rules:
+      - alert: WorkflowFailuresHigh
+        expr: rate(workflow_failed_total[5m]) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "workflow failures >5% for 5m" }
+      - alert: ProviderLatencyP95High
+        expr: histogram_quantile(0.95, provider_latency_ms) > 2000
+        for: 5m
+        labels: { severity: warning }
+      - alert: MCPErrorRateHigh
+        expr: rate(mcp_errors_total[5m]) > 0.02
+        for: 5m
+        labels: { severity: critical }
+      - alert: EventLagHigh
+        expr: event_lag_ms > 5000
+        for: 5m
+        labels: { severity: warning }
+      - alert: ArtifactFailuresHigh
+        expr: rate(artifact_failures_total[5m]) > 0.01
+        for: 5m
+        labels: { severity: warning }
+      - alert: BudgetExhaustedSpike
+        expr: rate(budget_exhausted_total[5m]) > 0.1
+        for: 5m
+        labels: { severity: info }

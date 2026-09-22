@@ -1,0 +1,27 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Fetch the refund policy chunk before any eligibility statement."
+    },
+    {
+      "name": "get_order",
+      "effect_class": "READ_ONLY",
+      "approval_requirement": "NONE",
+      "when_to_use": "Verify order, amount, and date before reasoning — never trust user-stated amounts."
+    },
+    {
+      "name": "process_refund",
+      "effect_class": "DESTRUCTIVE",
+      "approval_requirement": "REQUIRED",
+      "rate_limit_per_run": 1,
+      "when_to_use": "Execute the confirmed refund exactly once after explicit confirmation of amount + destination. Never retry by re-invocation — reconcile by lookup."
+    },
+    {
+      "name": "request_human_handoff",
+      "built_in": true,
+      "when_to_use": "Ambiguous eligibility or policy exceptions — log the ambiguity and hand off, do not decide."
+    }
+  ]
+}

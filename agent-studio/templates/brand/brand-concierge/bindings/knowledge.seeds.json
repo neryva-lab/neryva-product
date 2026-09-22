@@ -1,0 +1,4 @@
+{
+  "required": ["brand-docs"],
+  "notes": "brand-docs is the approved knowledge corpus (policies, pricing, FAQs). Ingest it before publishing — installs at orgs without READY documents report knowledge_source_missing until it exists."
+}

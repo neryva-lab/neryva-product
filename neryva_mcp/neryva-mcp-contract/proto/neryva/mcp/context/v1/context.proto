@@ -1,0 +1,171 @@
+syntax = "proto3";
+
+package neryva.mcp.context.v1;
+
+import "buf/validate/validate.proto";
+import "neryva/mcp/common/v1/common.proto";
+
+// GetAuthorizedRunContext returns a bounded manifest, not an unbounded transcript dump.
+// Tenant/role/conversation/document/classification filters are applied in Engine query before serialization.
+// Reference: neryva_mcp_implementation_plan.md:556-566
+message GetAuthorizedRunContextRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  // Requested artifact purposes, already filtered by policy. Empty = engine defaults.
+  repeated string requested_purposes = 2 [(buf.validate.field).repeated.items.string.max_len = 32];
+}
+
+// ModelParams — provider-neutral generation parameters resolved from the pinned
+// policy snapshot. All fields optional: providers apply their own defaults when
+// unset. Engine owns the values; Studio forwards them verbatim to the gateway.
+// v1.1 (2026-09-12): added so a run carries its full sampling configuration.
+message ModelParams {
+  double temperature = 1 [(buf.validate.field).double.gte = 0, (buf.validate.field).double.lte = 2];
+  uint32 max_output_tokens = 2 [(buf.validate.field).uint32.lte = 200000];
+  double top_p = 3 [(buf.validate.field).double.gt = 0, (buf.validate.field).double.lte = 1];
+  // Provider-neutral reasoning effort hint: minimal|low|medium|high. Providers
+  // that lack the concept ignore it; providers that require it map 1:1.
+  string reasoning_effort = 4 [(buf.validate.field).string.max_len = 16];
+  // v1.3: JSON Schema (2020-12) text for structured output. Empty = freeform.
+  // The engine validates shape at publish; the runtime passes it through to
+  // the provider's structured-output mode.
+  string output_schema = 5 [(buf.validate.field).string.max_len = 16384];
+}
+
+message ContextManifest {
+  string assistant_version_id = 1 [(buf.validate.field).string.min_len = 1];
+  string policy_version = 2 [(buf.validate.field).string.min_len = 1];
+  string conversation_summary = 3 [(buf.validate.field).string.max_len = 8192];
+  repeated BoundedMessage recent_messages = 4 [(buf.validate.field).repeated.max_items = 20];
+  repeated MemoryRef memories = 5 [(buf.validate.field).repeated.max_items = 20];
+  repeated KnowledgeRef knowledge_refs = 6 [(buf.validate.field).repeated.max_items = 20];
+  repeated ToolDescriptor tools = 7;
+  repeated neryva.mcp.common.v1.ArtifactRef artifact_refs = 8 [(buf.validate.field).repeated.max_items = 10];
+  RunBudgets budgets = 9;
+  // v1.1: assistant instructions (system prompt) from the pinned policy snapshot.
+  // Untrusted-content marking is applied by the Engine before any untrusted data
+  // is embedded near this field; this field itself is org-authored and trusted.
+  string instructions = 10 [(buf.validate.field).string.max_len = 32768];
+  // v1.1: generation parameters (temperature, output budget, reasoning effort).
+  ModelParams model_params = 11;
+  // v1.1: org-allowlisted model references (provider/model) from the pinned
+  // model policy — the runtime gateway routes/fails over within this set.
+  repeated string allowed_models = 12 [(buf.validate.field).repeated.max_items = 16];
+}
+
+message BoundedMessage {
+  string message_id = 1 [(buf.validate.field).string.min_len = 1];
+  string role = 2 [(buf.validate.field).string.min_len = 1];
+  string text = 3 [(buf.validate.field).string.max_len = 8192];
+  neryva.mcp.common.v1.ArtifactRef artifact_ref = 4;
+  // v1.2: claim-check refs for message attachments (vision input, FL-1.6).
+  // The runtime fetches each via GetRunArtifact (fresh authorization) and
+  // caps count/bytes before building provider image parts.
+  repeated neryva.mcp.common.v1.ArtifactRef attachments = 5 [(buf.validate.field).repeated.max_items = 4];
+}
+
+message MemoryRef {
+  string memory_id = 1 [(buf.validate.field).string.min_len = 1];
+  string scope = 2 [(buf.validate.field).string.min_len = 1];
+  string provenance = 3;
+  // v1.1: bounded memory content — approved memories only (proposals never
+  // surface). Engine applies untrusted-content spotlighting before inclusion.
+  string content = 4 [(buf.validate.field).string.max_len = 2048];
+  string content_media_type = 5 [(buf.validate.field).string.max_len = 64];
+}
+
+message KnowledgeRef {
+  string document_id = 1 [(buf.validate.field).string.min_len = 1];
+  string chunk_id = 2;
+  neryva.mcp.common.v1.ArtifactRef artifact_ref = 3;
+  // v1.1: bounded snippet so the runtime can ground answers without a second
+  // round trip per chunk. Engine applies untrusted-content spotlighting.
+  string snippet = 4 [(buf.validate.field).string.max_len = 4096];
+  string title = 5 [(buf.validate.field).string.max_len = 512];
+  double score = 6;
+  // Byte offsets of the chunk within its document version — citation support.
+  uint32 source_range_start = 7;
+  uint32 source_range_end = 8;
+}
+
+message ToolDescriptor {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  string effect_class = 2;
+  string approval_requirement = 3;
+  // v1.1: human/model-facing description from the Engine tool catalog.
+  string description = 4 [(buf.validate.field).string.max_len = 2048];
+  // v1.1: JSON Schema (2020-12) serialized as JSON text — the model cannot
+  // emit a valid tool call without it. Bounded; schema hash pinning happens at
+  // publish time in Engine (tool_policy.tools[].schema_hash).
+  string input_schema_json = 5 [(buf.validate.field).string.max_len = 16384];
+  // v1.1: capability annotations (MCP-aligned hints, advisory not security).
+  ToolAnnotations annotations = 6;
+}
+
+message ToolAnnotations {
+  bool read_only = 1;
+  bool destructive = 2;
+  bool idempotent = 3;
+  bool open_world = 4;
+}
+
+message RunBudgets {
+  uint32 max_tool_calls = 1;
+  uint32 max_model_calls = 2;
+  uint64 max_output_bytes = 3;
+  // v1.1: token + cost + wall-clock budgets for the whole run. Zero = unset
+  // (Engine-side defaults apply); Studio must treat 0 as "no explicit budget".
+  uint64 max_total_tokens = 4;
+  uint64 max_cost_micros = 5;
+  uint32 wall_clock_seconds = 6;
+}
+
+message GetAuthorizedRunContextResponse {
+  ContextManifest manifest = 1 [(buf.validate.field).required = true];
+}
+
+// v1.1: agentic retrieval — mid-run knowledge search, Engine-authorized
+// (ACL-before-scoring), results bounded. Declared on RunAuthorityService.
+message SearchKnowledgeRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  string query = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 512,
+    (buf.validate.field).required = true
+  ];
+  uint32 max_results = 3 [(buf.validate.field).uint32.gte = 1, (buf.validate.field).uint32.lte = 20];
+}
+
+message SearchKnowledgeResponse {
+  repeated KnowledgeRef results = 1 [(buf.validate.field).repeated.max_items = 20];
+}
+
+// v1.1: durable conversation compaction — Studio summarizes (it owns the model
+// credentials) and Engine stores the summary as business truth. Idempotent per
+// (conversation_id, source_sequence): duplicate with same digest returns
+// original; different digest rejects.
+message SaveConversationSummaryRequest {
+  neryva.mcp.common.v1.RequestContext ctx = 1 [(buf.validate.field).required = true];
+  // Highest message sequence covered by this summary.
+  int64 source_sequence = 2 [(buf.validate.field).int64.gte = 0];
+  string summary = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 8192,
+    (buf.validate.field).required = true
+  ];
+  uint32 token_count = 4;
+  // Model that produced the summary (provenance, not secrets).
+  string model_id = 5 [(buf.validate.field).string.max_len = 128];
+}
+
+message SaveConversationSummaryResponse {
+  string summary_id = 1 [(buf.validate.field).string.min_len = 1];
+  bool was_duplicate = 2;
+}
+
+// Historical service declaration — retained for generated-type compatibility.
+// Runtime authority for context RPCs is RunAuthorityService (run.proto);
+// ContextService is not separately served.
+service ContextService {
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc GetAuthorizedRunContext(GetAuthorizedRunContextRequest) returns (GetAuthorizedRunContextResponse) {}
+}

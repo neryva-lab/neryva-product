@@ -1,0 +1,17 @@
+﻿# Root monorepo ignores
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+gen/
+.tmp/
+.env
+.env.local
+.env.*.local
+logs/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+

@@ -1,0 +1,21 @@
+{
+  "required": [
+    {
+      "name": "search_knowledge",
+      "built_in": true,
+      "when_to_use": "Close checklists and account mappings before touching any lines."
+    },
+    {
+      "name": "get_ledger_entries",
+      "effect_class": "READ_ONLY",
+      "approval_requirement": "NONE",
+      "when_to_use": "Read-only ledger lines for the scoped period — every figure traces here."
+    },
+    {
+      "name": "draft_journal_entry",
+      "effect_class": "MUTATING",
+      "approval_requirement": "REQUIRED",
+      "when_to_use": "Balanced compensating-entry proposals (debits = credits) for human posting. Drafts only — never post."
+    }
+  ]
+}
