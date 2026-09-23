@@ -16,4 +16,5 @@ export * from './artifact-activities.js';
 export * from './guardrail-activities.js';
 export * from './checkpoint-activities.js';
 export * from './event-activities.js';
+export * from './recovery.js';
 export const PACKAGE_NAME = '@neryva/activities';

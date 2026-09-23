@@ -19,6 +19,12 @@ import {
 } from '@temporalio/workflow';
 import type { AgentRunWorkflowInput, WorkflowProgress, QueuedSignal } from './workflow-state.js';
 import { deriveWorkflowId } from './workflow-state.js';
+import {
+  RECOVERY_FAILED_PREFIX,
+  type RecoveryMaterial,
+  type WithRecovery,
+} from './recovery-material.js';
+
 import { assertWorkflowInputBounded } from './payload.js';
 import { extractVersionNumber, isTemporalJsonSafe } from './version-extract.js';
 import { ApprovalIdMap } from './approval-ids.js';
@@ -358,7 +364,10 @@ const {
   commitRunResult,
   failRun,
   releaseRunLease: _releaseRunLease,
-} = proxyActivities<McpActivities>({
+} = proxyActivities<
+  WithRecovery<Omit<McpActivities, 'acquireOrRenewRunLease'>> &
+    Pick<McpActivities, 'acquireOrRenewRunLease'>
+>({
   scheduleToStartTimeout: '10s',
   startToCloseTimeout: '15s',
   retry: {
@@ -370,7 +379,7 @@ const {
   },
 });
 
-const { compileContext, fetchRunImages } = proxyActivities<ContextActivities>({
+const { compileContext, fetchRunImages } = proxyActivities<WithRecovery<ContextActivities>>({
   scheduleToStartTimeout: '10s',
   startToCloseTimeout: '20s',
   retry: {
@@ -382,7 +391,7 @@ const { compileContext, fetchRunImages } = proxyActivities<ContextActivities>({
   },
 });
 
-const { emitEvent } = proxyActivities<EventActivities>({
+const { emitEvent } = proxyActivities<WithRecovery<EventActivities>>({
   scheduleToStartTimeout: '10s',
   startToCloseTimeout: '15s',
   retry: {
@@ -394,7 +403,7 @@ const { emitEvent } = proxyActivities<EventActivities>({
   },
 });
 
-const { callModel } = proxyActivities<ModelActivities>({
+const { callModel } = proxyActivities<WithRecovery<ModelActivities>>({
   scheduleToStartTimeout: '10s',
   startToCloseTimeout: '60s',
   heartbeatTimeout: '20s',
@@ -407,7 +416,7 @@ const { callModel } = proxyActivities<ModelActivities>({
   },
 });
 
-const { executeTool } = proxyActivities<ToolActivities>({
+const { executeTool } = proxyActivities<WithRecovery<ToolActivities>>({
   scheduleToStartTimeout: '10s',
   startToCloseTimeout: '45s',
   heartbeatTimeout: '15s',
@@ -422,7 +431,9 @@ const { executeTool } = proxyActivities<ToolActivities>({
   },
 });
 
-const { createApprovalRequest, getApprovalState, getRunVersion } = proxyActivities<ApprovalActivities>({
+const { createApprovalRequest, getApprovalState, getRunVersion } = proxyActivities<
+  WithRecovery<ApprovalActivities>
+>({
   scheduleToStartTimeout: '10s',
   startToCloseTimeout: '15s',
   retry: {
@@ -435,7 +446,7 @@ const { createApprovalRequest, getApprovalState, getRunVersion } = proxyActiviti
 });
 
 const { moderateContent, saveCheckpoint, loadCheckpoint } = proxyActivities<
-  GuardrailActivities & CheckpointActivities
+  WithRecovery<CheckpointActivities> & GuardrailActivities
 >({
   scheduleToStartTimeout: '10s',
   startToCloseTimeout: '15s',
@@ -616,6 +627,28 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
   let expectedRunVersion = 0;
 
   /**
+   * Wave 4 GAP 2 — recovery envelope attached as the trailing argument of
+   * every MCP-dependent activity call. On a fresh worker after a crash or
+   * restart, the activity registry uses it to reconstruct the run's MCP
+   * client (from the Engine-issued dispatch capability) and re-acquire/renew
+   * the lease before the retried activity runs. Built from workflow input +
+   * deterministic workflow state only (replay-safe, plain JSON).
+   */
+  const recoveryMaterial = (): RecoveryMaterial => ({
+    __neryvaRecovery: true,
+    scope: {
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      runId: input.runId,
+      agentVersionId: input.agentVersionId,
+      actorId: `run:${input.runId}`,
+    },
+    ...(input.capabilityToken !== undefined ? { capabilityToken: input.capabilityToken } : {}),
+    ...(input.capabilityId !== undefined ? { capabilityId: input.capabilityId } : {}),
+    ...(leaseEpoch > 0 ? { expectedLeaseEpoch: leaseEpoch } : {}),
+  });
+
+  /**
    * Durable wait for ONE approval decision — survives restart, cancel
    * propagates Engine→Studio→Temporal→tool. Used by the multi-call approval
    * path (FL-1.1 lockstep): one wait per approval-required call.
@@ -673,7 +706,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       while (pendingApprovals.has(approvalId) && !cancelRequested) {
         let state: string;
         try {
-          const res = await getApprovalState({ approvalRef: approvalId });
+          const res = await getApprovalState({ approvalRef: approvalId }, recoveryMaterial());
           state = res.state ?? 'NOT_FOUND';
         } catch {
           state = 'NOT_FOUND'; // transient MCP failure — retry next tick
@@ -736,13 +769,18 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
     log.info(`ADMISSION ok for ${input.runId}`);
 
     // LOAD_CONTEXT + POLICY_CHECK via compileContext (MCP-backed, deterministic ordering later)
-    const compiled = await compileContext({
-      runId: input.runId,
-      organizationId: input.organizationId,
-      conversationId: input.conversationId,
-      agentVersionId: input.agentVersionId,
-      ...(input.triggerMessageId !== undefined ? { triggerMessageId: input.triggerMessageId } : {}),
-    });
+    const compiled = await compileContext(
+      {
+        runId: input.runId,
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        agentVersionId: input.agentVersionId,
+        ...(input.triggerMessageId !== undefined
+          ? { triggerMessageId: input.triggerMessageId }
+          : {}),
+      },
+      recoveryMaterial(),
+    );
     bumpHistory(3, JSON.stringify(compiled).length);
     progress.kernelState.status = 'POLICY_CHECK';
     // Policy check: allowlist + effect classes already resolved by compileContext via MCP scope
@@ -759,25 +797,31 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       policy: compiled.guardrailPolicy,
     });
     if (inputScreening.blocked) {
-      await emitEvent({
-        scope: {
-          organizationId: input.organizationId,
-          conversationId: input.conversationId,
-          runId: input.runId,
-          correlationId: input.correlationId,
+      await emitEvent(
+        {
+          scope: {
+            organizationId: input.organizationId,
+            conversationId: input.conversationId,
+            runId: input.runId,
+            correlationId: input.correlationId,
+          },
+          type: 'RunWarning',
+          body: {
+            kind: 'RunWarning',
+            runId: input.runId,
+            code: 'GUARDRAIL_BLOCKED_INPUT',
+            messageHash: `moderation categories: ${inputScreening.categories.join(',')}`,
+          },
         },
-        type: 'RunWarning',
-        body: {
-          kind: 'RunWarning',
-          runId: input.runId,
-          code: 'GUARDRAIL_BLOCKED_INPUT',
-          messageHash: `moderation categories: ${inputScreening.categories.join(',')}`,
+        recoveryMaterial(),
+      ).catch(() => {});
+      await failRun(
+        {
+          errorCode: 'GUARDRAIL_BLOCKED',
+          errorMessage: 'user input blocked by guardrail policy',
         },
-      }).catch(() => {});
-      await failRun({
-        errorCode: 'GUARDRAIL_BLOCKED',
-        errorMessage: 'user input blocked by guardrail policy',
-      });
+        recoveryMaterial(),
+      );
       return 'blocked by guardrail policy';
     }
     progress.kernelState.status = 'MODEL_STEP';
@@ -821,7 +865,10 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
     // FL-1.6 — vision input: claim-check fetch + multimodal parts on the
     // last user message. Rejected attachments drop silently (activity logs);
     // a text-only conversation passes through untouched.
-    const fetchedImages = await fetchRunImages({ attachments: compiled.triggerAttachments });
+    const fetchedImages = await fetchRunImages(
+      { attachments: compiled.triggerAttachments },
+      recoveryMaterial(),
+    );
     if (fetchedImages.length > 0) {
       let lastUserIdx = -1;
       for (let i = messages.length - 1; i >= 0; i--) {
@@ -852,7 +899,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
     const MAX_TURNS = budgets.maxTurns;
     let turns = 0;
     // FL-2.17 - resume-from-checkpoint (lockstep with the inline executor).
-    const resume = await loadCheckpoint();
+    const resume = await loadCheckpoint(recoveryMaterial());
     if (resume && Array.isArray(resume.messages) && resume.messages.length > 0) {
       messages.splice(0, messages.length, ...resume.messages);
       tokensUsed = resume.totalPrompt + resume.totalCompletion;
@@ -870,31 +917,34 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       // MODEL_STEP — Activity, heartbeat, bounded retry (never blindly retry effectful)
       const currentStepId = `${input.runId}#${input.workflowGeneration}#model/${turns}`;
       progress.kernelState.stepId = currentStepId;
-      const modelRes = await callModel({
-        runId: input.runId,
-        stepId: currentStepId,
-        organizationId: input.organizationId,
-        agentVersionId: input.agentVersionId,
-        messages,
-        // Engine-pinned schemas from the tool catalog (context v1.1) — the
-        // model cannot emit a valid call without them.
-        tools: compiled.tools.map((t) => ({
-          name: t.name,
-          description: t.description ?? t.name,
-          parameters: t.inputSchema ?? {},
-        })),
-        correlationId: input.correlationId,
-        ...(compiled.allowedModels && compiled.allowedModels.length > 0
-          ? { model: compiled.allowedModels[0] }
-          : {}),
-        ...(compiled.modelParams?.temperature !== undefined
-          ? { temperature: compiled.modelParams.temperature }
-          : {}),
-        ...(compiled.modelParams?.topP !== undefined ? { topP: compiled.modelParams.topP } : {}),
-        ...(compiled.modelParams?.maxOutputTokens !== undefined
-          ? { maxTokens: compiled.modelParams.maxOutputTokens }
-          : {}),
-      });
+      const modelRes = await callModel(
+        {
+          runId: input.runId,
+          stepId: currentStepId,
+          organizationId: input.organizationId,
+          agentVersionId: input.agentVersionId,
+          messages,
+          // Engine-pinned schemas from the tool catalog (context v1.1) — the
+          // model cannot emit a valid call without them.
+          tools: compiled.tools.map((t) => ({
+            name: t.name,
+            description: t.description ?? t.name,
+            parameters: t.inputSchema ?? {},
+          })),
+          correlationId: input.correlationId,
+          ...(compiled.allowedModels && compiled.allowedModels.length > 0
+            ? { model: compiled.allowedModels[0] }
+            : {}),
+          ...(compiled.modelParams?.temperature !== undefined
+            ? { temperature: compiled.modelParams.temperature }
+            : {}),
+          ...(compiled.modelParams?.topP !== undefined ? { topP: compiled.modelParams.topP } : {}),
+          ...(compiled.modelParams?.maxOutputTokens !== undefined
+            ? { maxTokens: compiled.modelParams.maxOutputTokens }
+            : {}),
+        },
+        recoveryMaterial(),
+      );
       bumpHistory(2, JSON.stringify(modelRes).length);
       progress.kernelState.loopCounters.modelCalls += 1;
       tokensUsed += modelRes.usage.totalTokens;
@@ -913,23 +963,26 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       }
 
       // Emit runtime event (durable) after outcome known, stable event_id
-      await emitEvent({
-        scope: {
-          organizationId: input.organizationId,
-          conversationId: input.conversationId,
-          runId: input.runId,
-          correlationId: input.correlationId,
-        },
-        type: 'ModelCallCompleted',
-        stepId: currentStepId,
-        body: {
-          kind: 'ModelCallCompleted',
-          runId: input.runId,
-          modelId: modelRes.model,
+      await emitEvent(
+        {
+          scope: {
+            organizationId: input.organizationId,
+            conversationId: input.conversationId,
+            runId: input.runId,
+            correlationId: input.correlationId,
+          },
+          type: 'ModelCallCompleted',
           stepId: currentStepId,
-          usage: modelRes.usage,
+          body: {
+            kind: 'ModelCallCompleted',
+            runId: input.runId,
+            modelId: modelRes.model,
+            stepId: currentStepId,
+            usage: modelRes.usage,
+          },
         },
-      });
+        recoveryMaterial(),
+      );
       bumpHistory(1, 128);
 
       // Accumulate the assistant turn so the next call has full conversation state
@@ -958,25 +1011,31 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           policy: compiled.guardrailPolicy,
         });
         if (outputScreening.blocked) {
-          await emitEvent({
-            scope: {
-              organizationId: input.organizationId,
-              conversationId: input.conversationId,
-              runId: input.runId,
-              correlationId: input.correlationId,
+          await emitEvent(
+            {
+              scope: {
+                organizationId: input.organizationId,
+                conversationId: input.conversationId,
+                runId: input.runId,
+                correlationId: input.correlationId,
+              },
+              type: 'RunWarning',
+              body: {
+                kind: 'RunWarning',
+                runId: input.runId,
+                code: 'GUARDRAIL_BLOCKED_OUTPUT',
+                messageHash: `moderation categories: ${outputScreening.categories.join(',')}`,
+              },
             },
-            type: 'RunWarning',
-            body: {
-              kind: 'RunWarning',
-              runId: input.runId,
-              code: 'GUARDRAIL_BLOCKED_OUTPUT',
-              messageHash: `moderation categories: ${outputScreening.categories.join(',')}`,
+            recoveryMaterial(),
+          ).catch(() => {});
+          await failRun(
+            {
+              errorCode: 'GUARDRAIL_BLOCKED',
+              errorMessage: 'assistant output blocked by guardrail policy',
             },
-          }).catch(() => {});
-          await failRun({
-            errorCode: 'GUARDRAIL_BLOCKED',
-            errorMessage: 'assistant output blocked by guardrail policy',
-          });
+            recoveryMaterial(),
+          );
           progress.kernelState.status = 'FAILED';
           return 'blocked by guardrail policy';
         }
@@ -992,18 +1051,21 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         const catalogModel = slash >= 0 ? modelRes.model.slice(slash + 1) : modelRes.model;
         // FINALIZE → COMMIT_RESULT idempotent via stable idempotencyKey (1406, epoch fencing 448-449)
         // Retry-safe: duplicate CommitRunResult returns original, never duplicates assistant message
-        await commitRunResult({
-          resultText: text,
-          expectedVersion: expectedRunVersion,
-          usage: {
-            provider: modelRes.providerId,
-            model: catalogModel,
-            promptTokens: usedTokens.prompt,
-            completionTokens: usedTokens.completion,
-            totalTokens: usedTokens.prompt + usedTokens.completion,
+        await commitRunResult(
+          {
+            resultText: text,
+            expectedVersion: expectedRunVersion,
+            usage: {
+              provider: modelRes.providerId,
+              model: catalogModel,
+              promptTokens: usedTokens.prompt,
+              completionTokens: usedTokens.completion,
+              totalTokens: usedTokens.prompt + usedTokens.completion,
+            },
+            ...(followups.length > 0 ? { suggestedFollowups: followups } : {}),
           },
-          ...(followups.length > 0 ? { suggestedFollowups: followups } : {}),
-        });
+          recoveryMaterial(),
+        );
         bumpHistory(2, text.length);
         progress.kernelState.status = 'COMMIT_RESULT';
         // No separate RunCompleted emit: the Engine writes the terminal
@@ -1051,21 +1113,24 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           });
         }
         if (notAllowlisted.length > 0) {
-          await emitEvent({
-            scope: {
-              organizationId: input.organizationId,
-              conversationId: input.conversationId,
-              runId: input.runId,
-              correlationId: input.correlationId,
+          await emitEvent(
+            {
+              scope: {
+                organizationId: input.organizationId,
+                conversationId: input.conversationId,
+                runId: input.runId,
+                correlationId: input.correlationId,
+              },
+              type: 'RunWarning',
+              body: {
+                kind: 'RunWarning',
+                runId: input.runId,
+                code: 'TOOL_NOT_ALLOWLISTED',
+                messageHash: `not in pinned set: ${notAllowlisted.join(',')}`,
+              },
             },
-            type: 'RunWarning',
-            body: {
-              kind: 'RunWarning',
-              runId: input.runId,
-              code: 'TOOL_NOT_ALLOWLISTED',
-              messageHash: `not in pinned set: ${notAllowlisted.join(',')}`,
-            },
-          });
+            recoveryMaterial(),
+          );
         }
 
         // Approval subset — one durable decision per call (approval id binds
@@ -1080,35 +1145,41 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           const toolStepId = `${input.runId}#${input.workflowGeneration}#tool/${call.name}/${turns}`;
           const approvalId = `aprv_${input.runId}_${turns}_${call.id}`.slice(0, 64);
           progress.kernelState.status = 'REQUEST_APPROVAL';
-          await createApprovalRequest({
-            approvalId,
-            runId: input.runId,
-            organizationId: input.organizationId,
-            toolCallId: call.id,
-            stepId: toolStepId,
-            toolName: call.name,
-          });
-          bumpHistory(2, 256);
-          await emitEvent({
-            scope: {
-              organizationId: input.organizationId,
-              conversationId: input.conversationId,
-              runId: input.runId,
-              correlationId: input.correlationId,
-            },
-            type: 'ApprovalRequested',
-            // toolStepId is the stable identity of this approval request:
-            // without it, multiple approval-required calls in one turn
-            // derive the same eventId and the Engine dedups all but the
-            // first (same root cause as the ToolCallCompleted drop).
-            stepId: toolStepId,
-            body: {
-              kind: 'ApprovalRequested',
-              runId: input.runId,
+          await createApprovalRequest(
+            {
               approvalId,
+              runId: input.runId,
+              organizationId: input.organizationId,
               toolCallId: call.id,
+              stepId: toolStepId,
+              toolName: call.name,
             },
-          });
+            recoveryMaterial(),
+          );
+          bumpHistory(2, 256);
+          await emitEvent(
+            {
+              scope: {
+                organizationId: input.organizationId,
+                conversationId: input.conversationId,
+                runId: input.runId,
+                correlationId: input.correlationId,
+              },
+              type: 'ApprovalRequested',
+              // toolStepId is the stable identity of this approval request:
+              // without it, multiple approval-required calls in one turn
+              // derive the same eventId and the Engine dedups all but the
+              // first (same root cause as the ToolCallCompleted drop).
+              stepId: toolStepId,
+              body: {
+                kind: 'ApprovalRequested',
+                runId: input.runId,
+                approvalId,
+                toolCallId: call.id,
+              },
+            },
+            recoveryMaterial(),
+          );
           const decision = await waitForApprovalDecision(approvalId);
           if (!decision) {
             const cr2 = cancelRequested as { reason: string } | undefined;
@@ -1120,7 +1191,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           // activity (commitRunResult) must present the post-bump version, or
           // the terminal commit fails with "stale run version".
           try {
-            const refreshed = await getRunVersion();
+            const refreshed = await getRunVersion(recoveryMaterial());
             const v = extractVersionNumber(refreshed, 'version', 'runVersion');
             if (v > 0) expectedRunVersion = v;
           } catch {
@@ -1128,22 +1199,25 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
             // terminal commit will surface a genuine staleness loudly.
           }
           if (decision.decision !== 'APPROVED') {
-            await emitEvent({
-              scope: {
-                organizationId: input.organizationId,
-                conversationId: input.conversationId,
-                runId: input.runId,
-                correlationId: input.correlationId,
+            await emitEvent(
+              {
+                scope: {
+                  organizationId: input.organizationId,
+                  conversationId: input.conversationId,
+                  runId: input.runId,
+                  correlationId: input.correlationId,
+                },
+                type: 'ApprovalReceived',
+                stepId: toolStepId,
+                body: {
+                  kind: 'ApprovalReceived',
+                  runId: input.runId,
+                  approvalId,
+                  decision: decision.decision ?? 'DENIED',
+                },
               },
-              type: 'ApprovalReceived',
-              stepId: toolStepId,
-              body: {
-                kind: 'ApprovalReceived',
-                runId: input.runId,
-                approvalId,
-                decision: decision.decision ?? 'DENIED',
-              },
-            });
+              recoveryMaterial(),
+            );
             entries.set(call.id, {
               toolCallId: call.id,
               toolName: call.name,
@@ -1190,17 +1264,20 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           stepId: string,
           approvalId?: string,
         ): Promise<void> => {
-          const toolRes = await executeTool({
-            runId: input.runId,
-            organizationId: input.organizationId,
-            stepId,
-            toolName: call.name,
-            toolVersion: descriptor.version,
-            args: call.args ?? {},
-            idempotencyKey: `${input.runId}:${stepId}:${descriptor.version}`,
-            effectClass: descriptor.effectClass,
-            ...(approvalId !== undefined ? { approvalId } : {}),
-          });
+          const toolRes = await executeTool(
+            {
+              runId: input.runId,
+              organizationId: input.organizationId,
+              stepId,
+              toolName: call.name,
+              toolVersion: descriptor.version,
+              args: call.args ?? {},
+              idempotencyKey: `${input.runId}:${stepId}:${descriptor.version}`,
+              effectClass: descriptor.effectClass,
+              ...(approvalId !== undefined ? { approvalId } : {}),
+            },
+            recoveryMaterial(),
+          );
           bumpHistory(2, JSON.stringify(toolRes).length);
           progress.kernelState.loopCounters.toolCalls += 1;
           entries.set(call.id, {
@@ -1225,23 +1302,27 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
               toolCallId: call.id,
               success: toolRes.success,
             }),
+            recoveryMaterial(),
           );
           if (!toolRes.success && toolRes.outcome === 'UNKNOWN_OUTCOME') {
-            await emitEvent({
-              scope: {
-                organizationId: input.organizationId,
-                conversationId: input.conversationId,
-                runId: input.runId,
-                correlationId: input.correlationId,
+            await emitEvent(
+              {
+                scope: {
+                  organizationId: input.organizationId,
+                  conversationId: input.conversationId,
+                  runId: input.runId,
+                  correlationId: input.correlationId,
+                },
+                type: 'RunWarning',
+                body: {
+                  kind: 'RunWarning',
+                  runId: input.runId,
+                  code: 'UNKNOWN_OUTCOME',
+                  messageHash: `tool ${call.name} reconciliation required`,
+                },
               },
-              type: 'RunWarning',
-              body: {
-                kind: 'RunWarning',
-                runId: input.runId,
-                code: 'UNKNOWN_OUTCOME',
-                messageHash: `tool ${call.name} reconciliation required`,
-              },
-            });
+              recoveryMaterial(),
+            );
             // Do not blindly retry — surface to caller
             throw new Error(`UNKNOWN_OUTCOME:${call.name}`);
           }
@@ -1313,27 +1394,33 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           }
         }
         // FL-2.17 - durable loop-state checkpoint after every tool turn.
-        await saveCheckpoint({
-          runId: input.runId,
-          organizationId: input.organizationId,
-          state: {
-            messages,
-            turn: turns,
-            totalPrompt: usedTokens.prompt,
-            totalCompletion: usedTokens.completion,
-            toolCallsExecuted: progress.kernelState.loopCounters.toolCalls,
+        await saveCheckpoint(
+          {
+            runId: input.runId,
+            organizationId: input.organizationId,
+            state: {
+              messages,
+              turn: turns,
+              totalPrompt: usedTokens.prompt,
+              totalCompletion: usedTokens.completion,
+              toolCallsExecuted: progress.kernelState.loopCounters.toolCalls,
+            },
           },
-        });
+          recoveryMaterial(),
+        );
         progress.kernelState.status = 'MODEL_STEP';
         continue;
       }
 
       // Handoff / unknown finish → finalize
       progress.kernelState.status = 'FINALIZE';
-      await commitRunResult({
-        resultText: modelRes.text ?? '',
-        expectedVersion: expectedRunVersion,
-      });
+      await commitRunResult(
+        {
+          resultText: modelRes.text ?? '',
+          expectedVersion: expectedRunVersion,
+        },
+        recoveryMaterial(),
+      );
       progress.kernelState.status = 'COMMIT_RESULT';
       return modelRes.text ?? '';
     }
@@ -1346,7 +1433,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       // Cancel is durable — propagate to provider/tool via CancellationScope, then failRun idempotent
       const reason = msg.slice('CANCELLED:'.length);
       try {
-        await failRun({ errorCode: 'CANCELLED', errorMessage: reason });
+        await failRun({ errorCode: 'CANCELLED', errorMessage: reason }, recoveryMaterial());
       } catch {
         // best-effort — workflow will be cancelled anyway
       }
@@ -1371,29 +1458,44 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
     // Budget breaches carry their dimension (FL-1.2 lockstep with the inline
     // executor's RunWarning + FailRun(BUDGET_EXHAUSTED)).
     if (msg.startsWith('BUDGET_EXHAUSTED:')) {
-      await emitEvent({
-        scope: {
-          organizationId: input.organizationId,
-          conversationId: input.conversationId,
-          runId: input.runId,
-          correlationId: input.correlationId,
+      await emitEvent(
+        {
+          scope: {
+            organizationId: input.organizationId,
+            conversationId: input.conversationId,
+            runId: input.runId,
+            correlationId: input.correlationId,
+          },
+          type: 'RunWarning',
+          body: {
+            kind: 'RunWarning',
+            runId: input.runId,
+            code: 'BUDGET_EXHAUSTED',
+            messageHash: `budget dimension exhausted: ${msg.slice('BUDGET_EXHAUSTED:'.length)}`,
+          },
         },
-        type: 'RunWarning',
-        body: {
-          kind: 'RunWarning',
-          runId: input.runId,
-          code: 'BUDGET_EXHAUSTED',
-          messageHash: `budget dimension exhausted: ${msg.slice('BUDGET_EXHAUSTED:'.length)}`,
-        },
-      }).catch(() => {});
+        recoveryMaterial(),
+      ).catch(() => {});
     }
     try {
-      await failRun({
-        errorCode: msg.startsWith('BUDGET_EXHAUSTED:') ? 'BUDGET_EXHAUSTED' : 'FAILED',
-        errorMessage: msg.slice(0, 1024),
-      });
-    } catch {
-      // failRun itself is idempotent; ignore duplicate
+      await failRun(
+        {
+          errorCode: msg.startsWith('BUDGET_EXHAUSTED:') ? 'BUDGET_EXHAUSTED' : 'FAILED',
+          errorMessage: msg.slice(0, 1024),
+        },
+        recoveryMaterial(),
+      );
+    } catch (reconcileErr) {
+      // failRun itself is idempotent — ignore duplicate-terminal noise. But a
+      // failed run-client recovery is a loud reconciliation failure: the
+      // Engine row may still be non-terminal while Temporal marks the
+      // workflow FAILED. Surface it (never swallow) so it pages instead of
+      // diverging silently like the Wave 4 worker-kill run did.
+      const reconcileMsg =
+        reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr);
+      if (reconcileMsg.startsWith(RECOVERY_FAILED_PREFIX)) {
+        throw new Error(`${reconcileMsg}:original=${msg.slice(0, 200)}`);
+      }
     }
     progress.kernelState.status = 'FAILED';
     // No RunFailed emit: failRun above writes the terminal `run.failed`
@@ -1405,7 +1507,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
     // Epoch-fenced lease release — best effort; safe on CAN (next generation re-claims)
     try {
       if (leaseEpoch > 0) {
-        await _releaseRunLease(leaseEpoch);
+        await _releaseRunLease(leaseEpoch, recoveryMaterial());
       }
     } catch {
       // ignore — Engine lease expiry is the safety net

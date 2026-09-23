@@ -24,6 +24,12 @@ import {
 } from '@neryva/activities';
 import { resolveModerationHook, type ModerationHook } from '@neryva/security';
 import { EngineSecretProvider, toUint64 } from '@neryva/activities';
+import {
+  isRecoveryMaterial,
+  RECOVERY_FAILED_PREFIX,
+  type RecoveryMaterial,
+  type RecoveryScope,
+} from '@neryva/activities';
 
 /**
  * Convert the Engine's claim response to a Temporal-serializable plain object.
@@ -56,7 +62,8 @@ function parseStaleLeaseDetails(err: unknown): { leaseOwner: string; actualEpoch
         ? err
         : null;
   if (!connectErr) return null;
-  const metadata = (connectErr as unknown as { metadata?: { get(name: string): string | null } }).metadata;
+  const metadata = (connectErr as unknown as { metadata?: { get(name: string): string | null } })
+    .metadata;
   const detailsHeader = metadata?.get('details') ?? null;
   if (!detailsHeader) return null;
   try {
@@ -115,6 +122,152 @@ function runScopedClient(manager: McpClientManager): NeryvaMcpClient {
   });
 }
 
+/**
+ * Minimal manager surface the recovery wrapper needs. The real
+ * McpClientManager satisfies it structurally; unit tests use fakes.
+ * Exported for tests.
+ */
+export interface RunClientRecoveryManager {
+  clientForRun(runId: string): unknown;
+  dispatchClient(
+    scope: RecoveryScope,
+    capabilityToken: string,
+    capabilityId: string,
+  ): {
+    claimRun(params: {
+      expectedLeaseOwner?: string;
+      expectedLeaseEpoch?: bigint;
+    }): Promise<unknown>;
+  };
+  evictRun(runId: string): void;
+}
+
+function hasRunClient(manager: RunClientRecoveryManager, runId: string): boolean {
+  try {
+    manager.clientForRun(runId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** In-flight reconstructions, single-flight per run (a fresh worker can run concurrent activities). */
+const recoveryFlights = new Map<string, Promise<void>>();
+
+/**
+ * Reconstruct the run's MCP client from the Engine-issued dispatch capability
+ * and re-acquire/renew the Engine lease BEFORE the retried activity runs.
+ * Same-owner stale-epoch renewal (mirrors admission); another owner is never
+ * stolen. On any failure the partially-cached client is evicted and a
+ * RUN_RECOVERY_FAILED error is thrown — never a silent unclaimed client.
+ */
+async function recoverRunClient(
+  manager: RunClientRecoveryManager,
+  recovery: RecoveryMaterial,
+): Promise<void> {
+  const runId = recovery.scope.runId;
+  // Double-check inside the flight: a concurrent activity may have
+  // reconstructed while this one waited for the single-flight slot.
+  if (hasRunClient(manager, runId)) return;
+  try {
+    if (!recovery.capabilityToken || !recovery.capabilityId) {
+      throw new Error('no dispatch capability to reconstruct the run client');
+    }
+    const client = manager.dispatchClient(
+      recovery.scope,
+      recovery.capabilityToken,
+      recovery.capabilityId,
+    );
+    const owner = `agent-studio:${recovery.scope.actorId}`;
+    const epoch = toUint64(recovery.expectedLeaseEpoch, 'expectedLeaseEpoch');
+    try {
+      await client.claimRun(
+        epoch === undefined
+          ? { expectedLeaseOwner: owner }
+          : { expectedLeaseOwner: owner, expectedLeaseEpoch: epoch },
+      );
+    } catch (err) {
+      // Idempotent retry: the lease may still be held by us under a newer
+      // epoch (the admission attempt's response was lost when the worker
+      // died). The Engine's stale-epoch conflict carries the actual
+      // owner+epoch; renew only when WE hold it.
+      const stale = parseStaleLeaseDetails(err);
+      if (stale && stale.leaseOwner === owner) {
+        await client.claimRun({
+          expectedLeaseOwner: owner,
+          expectedLeaseEpoch: BigInt(stale.actualEpoch),
+        });
+      } else {
+        throw err;
+      }
+    }
+  } catch (err) {
+    // Never leave a partially-reconstructed client cached.
+    try {
+      manager.evictRun(runId);
+    } catch {
+      // ignore — eviction is best-effort cleanup
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      msg.startsWith(RECOVERY_FAILED_PREFIX) ? msg : `${RECOVERY_FAILED_PREFIX}${runId}:${msg}`,
+    );
+  }
+}
+
+async function ensureRunClient(
+  manager: RunClientRecoveryManager,
+  recovery: RecoveryMaterial,
+): Promise<void> {
+  const runId = recovery.scope.runId;
+  if (hasRunClient(manager, runId)) return;
+  const existing = recoveryFlights.get(runId);
+  if (existing) return existing;
+  const flight = (async () => {
+    try {
+      await recoverRunClient(manager, recovery);
+    } finally {
+      // Unconditional delete is safe: a replacement flight for this run can
+      // only be created after this entry is gone (get() would have returned
+      // it), so no other flight can be in the map here.
+      recoveryFlights.delete(runId);
+    }
+  })();
+  recoveryFlights.set(runId, flight);
+  return flight;
+}
+
+/**
+ * Wrap every activity so a trailing recovery envelope (see
+ * `@neryva/activities` recovery.ts) reconstructs a missing run client before
+ * the activity runs. The envelope is stripped before invoking the original
+ * activity, so the underlying activity package signatures are unchanged.
+ * Activities invoked without an envelope behave exactly as before.
+ * Exported for unit tests.
+ */
+export function wrapActivitiesWithRecovery(
+  manager: RunClientRecoveryManager,
+  activities: Record<string, unknown>,
+): Record<string, unknown> {
+  const wrapped: Record<string, unknown> = {};
+  for (const [name, fn] of Object.entries(activities)) {
+    if (typeof fn !== 'function') {
+      wrapped[name] = fn;
+      continue;
+    }
+    const original = fn as (this: unknown, ...args: unknown[]) => unknown;
+    wrapped[name] = async function (this: unknown, ...args: unknown[]): Promise<unknown> {
+      const last = args[args.length - 1];
+      if (isRecoveryMaterial(last)) {
+        await ensureRunClient(manager, last);
+        return original.apply(this, args.slice(0, -1));
+      }
+      return original.apply(this, args);
+    };
+  }
+  return wrapped;
+}
+
 export function createActivityRegistry(opts: ActivityRegistryOptions): Record<string, unknown> {
   const mcp = createMcpActivities(runScopedClient(opts.manager));
   const context = createContextActivities(runScopedClient(opts.manager));
@@ -159,32 +312,39 @@ export function createActivityRegistry(opts: ActivityRegistryOptions): Record<st
 
   // Merge — names must be unique across classes; event activities contribute
   // emitEvent/emitBatch (their commitRunResult is superseded by the MCP one below).
-  const registry: Record<string, unknown> = {
+  const plain: Record<string, unknown> = {
     // MCP (incl. commitRunResult / failRun — terminal, idempotent)
-    ...mcp,
+    ...(mcp as Record<string, unknown>),
     // Context
-    ...context,
+    ...(context as Record<string, unknown>),
     // Events (durable semantic)
     emitEvent: events.emitEvent,
     emitBatch: events.emitBatch,
     // Model
-    ...model,
+    ...(model as Record<string, unknown>),
     // Tool
-    ...tool,
+    ...(tool as Record<string, unknown>),
     // Approval
-    ...approval,
+    ...(approval as Record<string, unknown>),
     // Memory
-    ...memory,
+    ...(memory as Record<string, unknown>),
     // Usage
-    ...usage,
+    ...(usage as Record<string, unknown>),
     // Artifacts
-    ...createArtifactActivities(),
+    ...(createArtifactActivities() as unknown as Record<string, unknown>),
     // Guardrails (FL-1.4)
     moderateContent: guardrails.moderateContent,
     // Checkpoints (FL-2.17)
     saveCheckpoint: checkpoints.saveCheckpoint,
     loadCheckpoint: checkpoints.loadCheckpoint,
   };
+  // Wave 4 GAP 2 — run-client recovery: on a fresh worker after a crash or
+  // restart, the workflow's trailing recovery envelope reconstructs the run's
+  // MCP client from the dispatch capability and re-acquires/renews the Engine
+  // lease before the retried activity runs. The envelope is stripped before
+  // invoking the original activity; activities called without an envelope
+  // behave exactly as before.
+  const registry = wrapActivitiesWithRecovery(opts.manager, plain);
 
   // Claim is bootstrap-aware: pre-claim there is no run client yet, so the claim
   // The Engine-issued dispatch capability (relayed through the workflow input)
