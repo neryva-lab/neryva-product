@@ -22,6 +22,7 @@ import { deriveWorkflowId } from './workflow-state.js';
 import { assertWorkflowInputBounded } from './payload.js';
 import { extractVersionNumber, isTemporalJsonSafe } from './version-extract.js';
 import { ApprovalIdMap } from './approval-ids.js';
+import { buildToolCallCompletedEmit } from './tool-call-events.js';
 import { shouldContinueAsNew, incrementHistoryCount } from './continue-as-new.js';
 import { PATCH_IDS } from './workflow-versioning.js';
 import type { EventType, RuntimeEventBody } from '@neryva/contracts/events/runtime-events';
@@ -1096,6 +1097,11 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
               correlationId: input.correlationId,
             },
             type: 'ApprovalRequested',
+            // toolStepId is the stable identity of this approval request:
+            // without it, multiple approval-required calls in one turn
+            // derive the same eventId and the Engine dedups all but the
+            // first (same root cause as the ToolCallCompleted drop).
+            stepId: toolStepId,
             body: {
               kind: 'ApprovalRequested',
               runId: input.runId,
@@ -1130,6 +1136,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
                 correlationId: input.correlationId,
               },
               type: 'ApprovalReceived',
+              stepId: toolStepId,
               body: {
                 kind: 'ApprovalReceived',
                 runId: input.runId,
@@ -1202,23 +1209,23 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
             success: toolRes.success,
             result: toolRes.result ?? null,
           });
-          await emitEvent({
-            scope: {
-              organizationId: input.organizationId,
-              conversationId: input.conversationId,
-              runId: input.runId,
-              correlationId: input.correlationId,
-            },
-            type: 'ToolCallCompleted',
-            body: {
-              kind: 'ToolCallCompleted',
-              runId: input.runId,
+          // The event's identity IS the execution stepId: without it every
+          // ToolCallCompleted in the run derives the same eventId and the
+          // Engine dedups all but the first (see tool-call-events.ts).
+          await emitEvent(
+            buildToolCallCompletedEmit({
+              scope: {
+                organizationId: input.organizationId,
+                conversationId: input.conversationId,
+                runId: input.runId,
+                correlationId: input.correlationId,
+              },
+              stepId,
               toolName: call.name,
               toolCallId: call.id,
-              stepId,
               success: toolRes.success,
-            },
-          });
+            }),
+          );
           if (!toolRes.success && toolRes.outcome === 'UNKNOWN_OUTCOME') {
             await emitEvent({
               scope: {

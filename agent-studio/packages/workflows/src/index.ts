@@ -19,4 +19,5 @@ export * from './continue-as-new.js';
 export * from './payload.js';
 export * from './version-extract.js';
 export * from './approval-ids.js';
+export * from './tool-call-events.js';
 export const PACKAGE_NAME = '@neryva/workflows';
