@@ -14,6 +14,7 @@ import {
   RunAuthorityService,
   RunObservationService,
   GetRunArtifactRequestSchema,
+  GetRunRequestSchema,
 } from '@neryva/mcp-contract/gen/ts/neryva/mcp/run/v1/run_pb.js';
 import {
   AcquireOrRenewRunLeaseRequestSchema,
@@ -115,6 +116,7 @@ export class NeryvaMcpClient {
   };
   private readonly observation: {
     getRunArtifact: (req: never) => Promise<unknown>;
+    getRun: (req: never) => Promise<unknown>;
   };
   private readonly grantedScope: NeryvaMcpClientOptions['grantedScope'];
   private readonly protocolVersion: string;
@@ -457,6 +459,21 @@ export class NeryvaMcpClient {
       approvalRef: params.approvalRef.slice(0, 64),
     });
     return this.callIdempotent(() => this.authority.getApprovalState(req as never));
+  }
+
+  /**
+   * getRun → GetRun (RunObservationService). Returns the Engine's canonical
+   * run record including the current version (CAS token). Used to refresh a
+   * stale cached version after an external version bump (e.g. approval
+   * decision WAITING_APPROVAL → RUNNING).
+   */
+  async getRun(): Promise<{ version?: unknown }> {
+    const ctx = this.buildRequestContext('GetRun', 'run');
+    const req = create(GetRunRequestSchema, { ctx });
+    const res = (await this.callIdempotent(() => this.observation.getRun(req as never))) as {
+      run?: { version?: unknown };
+    };
+    return { version: res.run?.version };
   }
 
   /**

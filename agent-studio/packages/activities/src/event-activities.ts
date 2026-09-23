@@ -7,6 +7,7 @@
  */
 import { heartbeat } from './heartbeat.js';
 import type { NeryvaMcpClient } from '@neryva/neryva-mcp-client';
+import { toUint64 } from './mcp-activities.js';
 import {
   createRuntimeEvent,
   type RuntimeEvent,
@@ -144,12 +145,15 @@ export function createEventActivities(opts: EventActivitiesOptions) {
     async commitRunResult(
       scope: RunEventScope,
       resultText: string,
-      expectedVersion?: bigint | undefined,
+      expectedVersion?: number | bigint | undefined,
     ): Promise<unknown> {
       heartbeat({ step: 'commitRunResult', byteLength: resultText.length });
       // Final message durable via Engine; token deltas ephemeral (main.md:304)
       void scope;
-      return opts.client.commitRunResult({ resultText, expectedVersion });
+      return opts.client.commitRunResult({
+        resultText,
+        expectedVersion: toUint64(expectedVersion, 'expectedVersion'),
+      });
     },
   };
 }

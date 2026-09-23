@@ -10,19 +10,56 @@ export interface McpActivitiesOptions {
   client: NeryvaMcpClient;
 }
 
+/**
+ * Coerce a workflow-side epoch/version into the uint64 bigint the protobuf
+ * client requires. Temporal's default payload converter cannot serialize
+ * bigint, so workflows must pass plain JSON numbers through activity args
+ * (see agent-run-workflow.ts); bigint is still accepted so a direct caller
+ * cannot silently lose the fence. Validates BEFORE converting: negatives,
+ * fractional numbers, non-safe integers, and bigints outside the safe
+ * integer range all throw — never silently truncate.
+ */
+export function toUint64(value: number | bigint | undefined, field: string): bigint | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === 'bigint') {
+    if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error(
+        `${field} must be a non-negative safe integer, got ${value.toString()}`,
+      );
+    }
+    return value;
+  }
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${field} must be a non-negative safe integer, got ${String(value)}`);
+  }
+  return BigInt(value);
+}
+
 export function createMcpActivities(client: NeryvaMcpClient) {
   return {
     // Lease
     async acquireOrRenewRunLease(params: {
       expectedLeaseOwner?: string | undefined;
-      expectedLeaseEpoch?: bigint | undefined;
+      /**
+       * Workflow-side epoch: a plain JSON number. Temporal's payload
+       * converter cannot serialize bigint, so workflows must never pass
+       * bigint through activity args; bigint is still accepted for direct
+       * (non-Temporal) callers. Coerced to uint64 at this boundary.
+       */
+      expectedLeaseEpoch?: number | bigint | undefined;
       renewUntil?: Date | undefined;
     }): Promise<unknown> {
-      return client.claimRun(params);
+      const { expectedLeaseEpoch, ...rest } = params;
+      return client.claimRun({
+        ...rest,
+        expectedLeaseEpoch: toUint64(expectedLeaseEpoch, 'expectedLeaseEpoch'),
+      });
     },
 
-    async releaseRunLease(leaseEpoch: bigint): Promise<unknown> {
-      return client.releaseRunLease(leaseEpoch);
+    async releaseRunLease(leaseEpoch: number | bigint): Promise<unknown> {
+      const epoch = toUint64(leaseEpoch, 'leaseEpoch');
+      if (epoch === undefined) throw new Error('leaseEpoch is required');
+      return client.releaseRunLease(epoch);
     },
 
     // Context — sub-ops of GetAuthorizedRunContext (659)
@@ -93,7 +130,8 @@ export function createMcpActivities(client: NeryvaMcpClient) {
     // Terminal — idempotent, exactly once; usage rides the commit (v1.1)
     async commitRunResult(params: {
       resultText: string;
-      expectedVersion?: bigint | undefined;
+      /** Workflow-side version: a plain JSON number (see lease note above). */
+      expectedVersion?: number | bigint | undefined;
       resultArtifact?: Parameters<typeof client.commitRunResult>[0]['resultArtifact'];
       usage?: {
         provider: string;
@@ -104,15 +142,24 @@ export function createMcpActivities(client: NeryvaMcpClient) {
       };
       suggestedFollowups?: string[] | undefined;
     }): Promise<unknown> {
-      return client.commitRunResult(params);
+      const { expectedVersion, ...rest } = params;
+      return client.commitRunResult({
+        ...rest,
+        expectedVersion: toUint64(expectedVersion, 'expectedVersion'),
+      });
     },
 
     async failRun(params: {
       errorCode: string;
       errorMessage: string;
-      expectedVersion?: bigint | undefined;
+      /** Workflow-side version: a plain JSON number (see lease note above). */
+      expectedVersion?: number | bigint | undefined;
     }): Promise<unknown> {
-      return client.failRun(params);
+      const { expectedVersion, ...rest } = params;
+      return client.failRun({
+        ...rest,
+        expectedVersion: toUint64(expectedVersion, 'expectedVersion'),
+      });
     },
   };
 }

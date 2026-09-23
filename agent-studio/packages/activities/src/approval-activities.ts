@@ -76,6 +76,33 @@ export function createApprovalActivities(client: NeryvaMcpClient) {
       return { state: res?.state ?? 'NOT_FOUND' };
     },
 
+    /**
+     * getRunVersion — refresh the Engine's current run version (CAS token)
+     * after an external version bump. The approval decision transitions
+     * WAITING_APPROVAL → RUNNING and increments runs.version; a workflow
+     * parked on the approval holds the pre-bump version, so its terminal
+     * commitRunResult would fail with "stale run version". Call this after
+     * the approval resolves and use the returned version for all later
+     * version-guarded activities.
+     */
+    async getRunVersion(): Promise<{ version: number | null }> {
+      heartbeat({ step: 'getRunVersion' });
+      const res = await client.getRun();
+      // Normalize at the activity edge: the result crosses Temporal back to
+      // the workflow, and bigint is not JSON-serializable. Clamp to a safe
+      // integer — a version beyond MAX_SAFE_INTEGER is a corrupt CAS token.
+      const v = res.version;
+      if (typeof v === 'bigint') {
+        return {
+          version: v >= 0n && v <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(v) : null,
+        };
+      }
+      if (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0) {
+        return { version: v };
+      }
+      return { version: null };
+    },
+
     async recordApprovalDecision(decision: ApprovalDecision): Promise<void> {
       heartbeat({
         step: 'recordApprovalDecision',

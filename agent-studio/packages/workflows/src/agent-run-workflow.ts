@@ -20,9 +20,13 @@ import {
 import type { AgentRunWorkflowInput, WorkflowProgress, QueuedSignal } from './workflow-state.js';
 import { deriveWorkflowId } from './workflow-state.js';
 import { assertWorkflowInputBounded } from './payload.js';
+import { extractVersionNumber, isTemporalJsonSafe } from './version-extract.js';
+import { ApprovalIdMap } from './approval-ids.js';
 import { shouldContinueAsNew, incrementHistoryCount } from './continue-as-new.js';
 import { PATCH_IDS } from './workflow-versioning.js';
 import type { EventType, RuntimeEventBody } from '@neryva/contracts/events/runtime-events';
+import type { NeryvaModelResponse } from '@neryva/contracts/provider/model-response';
+import type { NeryvaTool } from '@neryva/contracts/provider/model-request';
 
 // Activity interfaces — types only, implementations are in @neryva/activities (never provider SDK in workflow)
 type McpActivities = {
@@ -36,11 +40,11 @@ type McpActivities = {
       actorId: string;
     };
     expectedLeaseOwner?: string;
-    expectedLeaseEpoch?: bigint;
+    expectedLeaseEpoch?: number;
   }): Promise<unknown>;
   commitRunResult(params: {
     resultText: string;
-    expectedVersion?: bigint;
+    expectedVersion?: number;
     usage?: {
       provider: string;
       model: string;
@@ -51,7 +55,7 @@ type McpActivities = {
     suggestedFollowups?: string[];
   }): Promise<unknown>;
   failRun(params: { errorCode: string; errorMessage: string }): Promise<unknown>;
-  releaseRunLease(epoch: bigint): Promise<unknown>;
+  releaseRunLease(epoch: number): Promise<unknown>;
 };
 
 type ContextActivities = {
@@ -123,10 +127,110 @@ type EventActivities = {
   }): Promise<{ eventId: string; idempotencyKey: string; wasArtifact: boolean }>;
 };
 
-/** FL-1.6 — multimodal content: text-only string or text+image parts. */
+/**
+ * FL-1.6 — multimodal content: text-only string or content parts.
+ * Tool turns use AI SDK v4 CoreMessage parts: the gateway passes `messages`
+ * straight to `generateText`, which validates every message against
+ * `coreMessageSchema` ("message must be a CoreMessage"). In particular a
+ * `{ role: 'tool', content: <string> }` message is REJECTED — tool results
+ * must be `tool-result` parts, and assistant tool proposals must be
+ * `tool-call` parts, or every model call after the first tool turn fails
+ * prompt validation. (The legacy `image` part shape is Studio-internal and
+ * is normalized by the gateway before reaching the SDK.)
+ */
 type ModelMessageContent =
   | string
-  | Array<{ type: 'text'; text: string } | { type: 'image'; mediaType: string; data: string }>;
+  | Array<
+      | { type: 'text'; text: string }
+      | { type: 'image'; mediaType: string; data: string }
+      | { type: 'tool-call'; toolCallId: string; toolName: string; args: unknown }
+      | { type: 'tool-result'; toolCallId: string; toolName: string; result: unknown; isError?: boolean }
+    >;
+
+/**
+ * Bound a tool result for prompt inclusion. Tool results are JSON values;
+ * an unbounded result would blow up the prompt, so values whose serialized
+ * form exceeds the budget degrade to a truncated preview (deterministic —
+ * JSON.stringify with the same input always yields the same output).
+ */
+const MAX_TOOL_RESULT_JSON_CHARS = 4096;
+function boundToolResult(result: unknown): unknown {
+  let json: string;
+  try {
+    // JSON.stringify returns undefined for undefined input, but the TS lib
+    // types claim `string` — so the ?? below looks unnecessary to the
+    // linter while being load-bearing at runtime.
+    const serialized: string | undefined = JSON.stringify(result);
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    json = serialized ?? 'null';
+  } catch {
+    return '[unserializable tool result]';
+  }
+  if (json.length <= MAX_TOOL_RESULT_JSON_CHARS) return result;
+  return `${json.slice(0, MAX_TOOL_RESULT_JSON_CHARS)}…[truncated]`;
+}
+
+/** Minimal tool-call shape the workflow accumulates from a model turn. */
+export interface WorkflowToolCall {
+  id: string;
+  name: string;
+  args?: unknown;
+}
+
+/** One executed tool outcome bound back to its proposal. */
+export interface WorkflowToolOutcome {
+  tool_call_id: string;
+  tool: string;
+  status: 'EXECUTED' | 'DENIED' | 'FAILED';
+  result: unknown;
+}
+
+/**
+ * Build the assistant history message for a model turn. Tool proposals become
+ * AI SDK CoreMessage `tool-call` parts (with an optional leading text part) —
+ * never a JSON string. Pure and deterministic; covered by
+ * core-message-parts.test.ts against the real AI SDK `coreMessageSchema`.
+ */
+export function buildAssistantHistoryMessage(
+  text: string | undefined,
+  toolCalls: WorkflowToolCall[] | undefined,
+): { role: string; content: ModelMessageContent } {
+  if (toolCalls && toolCalls.length > 0) {
+    const parts: Array<
+      | { type: 'text'; text: string }
+      | { type: 'tool-call'; toolCallId: string; toolName: string; args: unknown }
+    > = [];
+    if (text) parts.push({ type: 'text', text });
+    for (const tc of toolCalls) {
+      parts.push({ type: 'tool-call', toolCallId: tc.id, toolName: tc.name, args: tc.args });
+    }
+    return { role: 'assistant', content: parts };
+  }
+  return { role: 'assistant', content: text ?? '' };
+}
+
+/**
+ * Build the single tool-result history message for a turn. Every outcome
+ * becomes an AI SDK CoreMessage `tool-result` part — `{ role: 'tool',
+ * content: <string> }` is not a valid CoreMessage and makes the next
+ * `generateText` call reject the whole prompt ("message must be a
+ * CoreMessage"). Pure and deterministic; covered by
+ * core-message-parts.test.ts against the real AI SDK `coreMessageSchema`.
+ */
+export function buildToolResultHistoryMessage(
+  outcomes: WorkflowToolOutcome[],
+): { role: string; content: ModelMessageContent } {
+  return {
+    role: 'tool',
+    content: outcomes.map((e) => ({
+      type: 'tool-result' as const,
+      toolCallId: e.tool_call_id,
+      toolName: e.tool,
+      result: boundToolResult(e.result),
+      ...(e.status === 'EXECUTED' ? {} : { isError: true as const }),
+    })),
+  };
+}
 
 type ModelActivities = {
   callModel(params: {
@@ -135,20 +239,17 @@ type ModelActivities = {
     organizationId: string;
     agentVersionId: string;
     messages: Array<{ role: string; content: ModelMessageContent }>;
-    tools?: Array<{ name: string; description: string; schema: unknown }>;
+    tools?: NeryvaTool[];
     correlationId?: string;
     model?: string;
     temperature?: number;
     topP?: number;
     maxTokens?: number;
-  }): Promise<{
-    stepId: string;
-    modelId?: string;
-    finishReason: 'stop' | 'tool-call' | 'length' | 'content-filter' | 'error';
-    text?: string;
-    toolCalls?: Array<{ id: string; name: string; args: unknown }>;
-    usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
-  }>;
+  }): Promise<
+    NeryvaModelResponse & {
+      stepId: string;
+    }
+  >;
 };
 
 type ToolActivities = {
@@ -186,6 +287,13 @@ type ApprovalActivities = {
    * see waitForApprovalDecision.
    */
   getApprovalState(params: { approvalRef: string }): Promise<{ state?: string }>;
+  /**
+   * Refresh the Engine's current run version after an external version bump
+   * (approval decision WAITING_APPROVAL → RUNNING increments runs.version).
+   * The returned version replaces the admission-time CAS token for all later
+   * version-guarded activities (commitRunResult).
+   */
+  getRunVersion(): Promise<{ version: unknown }>;
 };
 
 type GuardrailActivities = {
@@ -313,7 +421,7 @@ const { executeTool } = proxyActivities<ToolActivities>({
   },
 });
 
-const { createApprovalRequest, getApprovalState } = proxyActivities<ApprovalActivities>({
+const { createApprovalRequest, getApprovalState, getRunVersion } = proxyActivities<ApprovalActivities>({
   scheduleToStartTimeout: '10s',
   startToCloseTimeout: '15s',
   retry: {
@@ -495,22 +603,16 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
   }
 
   // Lease epoch + business run version from the Engine claim — the epoch
-  // fences lease release; the version is the CAS token for the terminal commit.
-  let leaseEpoch = 0n;
-  let expectedRunVersion = 0n;
-  function extractBigint(raw: unknown, field: string, alt: string): bigint {
-    if (typeof raw === 'object' && raw !== null) {
-      const run = (raw as Record<string, unknown>)['run'];
-      const pool: unknown[] = [raw, ...(typeof run === 'object' && run !== null ? [run] : [])];
-      for (const source of pool) {
-        const candidate =
-          (source as Record<string, unknown>)[field] ?? (source as Record<string, unknown>)[alt];
-        if (typeof candidate === 'bigint') return candidate;
-        if (typeof candidate === 'number') return BigInt(candidate);
-      }
-    }
-    return 0n;
-  }
+  // fences lease release; the version is the CAS token for the terminal
+  // commit. Both travel through Temporal activity args, so they MUST stay
+  // plain JSON numbers (see version-extract.ts): the default payload
+  // converter cannot serialize bigint, and scheduling an activity with a
+  // bigint arg fails INSIDE the workflow (scheduleActivityNextHandler →
+  // toPayloadsWithContext) before the activity ever runs. The MCP boundary
+  // needs uint64, so the activity layer converts back to bigint at its own
+  // edge (toUint64 in @neryva/activities).
+  let leaseEpoch = 0;
+  let expectedRunVersion = 0;
 
   /**
    * Durable wait for ONE approval decision — survives restart, cancel
@@ -619,8 +721,15 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       ...(input.capabilityToken !== undefined ? { capabilityToken: input.capabilityToken } : {}),
       ...(input.capabilityId !== undefined ? { capabilityId: input.capabilityId } : {}),
     });
-    leaseEpoch = extractBigint(claimRes, 'leaseEpoch', 'epoch');
-    expectedRunVersion = extractBigint(claimRes, 'version', 'runVersion');
+    leaseEpoch = extractVersionNumber(claimRes, 'leaseEpoch', 'epoch');
+    expectedRunVersion = extractVersionNumber(claimRes, 'version', 'runVersion');
+    // Invariant: these cross Temporal activity args — fail here with a precise
+    // message rather than inside the scheduler with a cryptic converter error.
+    if (!isTemporalJsonSafe({ leaseEpoch, expectedRunVersion })) {
+      throw new Error(
+        'NON_SERIALIZABLE_VERSION: lease epoch / run version must be plain JSON numbers',
+      );
+    }
     bumpHistory(2, 256);
     progress.kernelState.status = 'LOAD_CONTEXT';
     log.info(`ADMISSION ok for ${input.runId}`);
@@ -771,7 +880,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         tools: compiled.tools.map((t) => ({
           name: t.name,
           description: t.description ?? t.name,
-          schema: t.inputSchema ?? {},
+          parameters: t.inputSchema ?? {},
         })),
         correlationId: input.correlationId,
         ...(compiled.allowedModels && compiled.allowedModels.length > 0
@@ -787,11 +896,9 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       });
       bumpHistory(2, JSON.stringify(modelRes).length);
       progress.kernelState.loopCounters.modelCalls += 1;
-      if (modelRes.usage) {
-        tokensUsed += modelRes.usage.totalTokens;
-        usedTokens.prompt += modelRes.usage.promptTokens;
-        usedTokens.completion += modelRes.usage.completionTokens;
-      }
+      tokensUsed += modelRes.usage.totalTokens;
+      usedTokens.prompt += modelRes.usage.promptTokens;
+      usedTokens.completion += modelRes.usage.completionTokens;
 
       // Budget checks — deterministic, from definition budgets (not hard-coded)
       if (progress.kernelState.loopCounters.modelCalls > budgets.maxModelCalls) {
@@ -817,19 +924,21 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         body: {
           kind: 'ModelCallCompleted',
           runId: input.runId,
-          modelId: modelRes.modelId ?? 'unknown',
+          modelId: modelRes.model,
           stepId: currentStepId,
-          ...(modelRes.usage !== undefined ? { usage: modelRes.usage } : {}),
+          usage: modelRes.usage,
         },
       });
       bumpHistory(1, 128);
 
       // Accumulate the assistant turn so the next call has full conversation state
-      const assistantContent =
-        modelRes.finishReason === 'tool-call' && modelRes.toolCalls
-          ? JSON.stringify(modelRes.toolCalls)
-          : (modelRes.text ?? '');
-      messages.push({ role: 'assistant', content: assistantContent });
+      // (CoreMessage parts — see buildAssistantHistoryMessage).
+      messages.push(
+        buildAssistantHistoryMessage(
+          modelRes.text,
+          modelRes.finishReason === 'tool-call' ? modelRes.toolCalls : undefined,
+        ),
+      );
 
       // Cancellation drains here — safe point before interpreting
       {
@@ -876,14 +985,18 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         // structured call and surfaces followups only if a re-drive supplies
         // them, so the commit interface is identical on both paths.
         const followups: string[] = [];
+        // Cost catalog keys models bare ('gpt-4o-mini'), not as routed ids
+        // ('openai/gpt-4o-mini'); providerId is the billing provider ('openai').
+        const slash = modelRes.model.lastIndexOf('/');
+        const catalogModel = slash >= 0 ? modelRes.model.slice(slash + 1) : modelRes.model;
         // FINALIZE → COMMIT_RESULT idempotent via stable idempotencyKey (1406, epoch fencing 448-449)
         // Retry-safe: duplicate CommitRunResult returns original, never duplicates assistant message
         await commitRunResult({
           resultText: text,
           expectedVersion: expectedRunVersion,
           usage: {
-            provider: 'litellm',
-            model: modelRes.modelId ?? 'unknown',
+            provider: modelRes.providerId,
+            model: catalogModel,
             promptTokens: usedTokens.prompt,
             completionTokens: usedTokens.completion,
             totalTokens: usedTokens.prompt + usedTokens.completion,
@@ -892,17 +1005,11 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         });
         bumpHistory(2, text.length);
         progress.kernelState.status = 'COMMIT_RESULT';
-        // Emit final durable event, then release lease in finally
-        await emitEvent({
-          scope: {
-            organizationId: input.organizationId,
-            conversationId: input.conversationId,
-            runId: input.runId,
-            correlationId: input.correlationId,
-          },
-          type: 'RunCompleted',
-          body: { kind: 'RunCompleted', runId: input.runId, resultType: 'SUCCEEDED' },
-        });
+        // No separate RunCompleted emit: the Engine writes the terminal
+        // `run.completed` run-event atomically with the COMPLETED transition
+        // inside commitRunResult (it owns the run lifecycle). A post-terminal
+        // AppendRunEvents is always rejected ("run is terminal"), so emitting
+        // here can only fail the workflow after the business run completed.
         log.info(`RunCompleted ${input.runId} after ${turns} turns`);
         return text;
       }
@@ -924,6 +1031,11 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           denied?: boolean;
         }
         const entries = new Map<string, ToolOutcomeEntry>();
+        // Call-ID → Engine approval ID for APPROVED mutating calls. The
+        // approval loop below waits for the decision; on APPROVED the call
+        // stays runnable and the ID must ride into executeTool, otherwise the
+        // gateway rejects it with APPROVAL_REQUIRED after the user approved.
+        const approvedCallIds = new ApprovalIdMap();
         const notAllowlisted: string[] = [];
         for (const call of modelRes.toolCalls) {
           if (toolByName.has(call.name)) continue;
@@ -997,6 +1109,18 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
             if (cr2 !== undefined) throw new Error(`CANCELLED:${cr2.reason}`);
             throw new Error(`APPROVAL_TIMEOUT:${approvalId}`);
           }
+          // The Engine's approval decision bumps runs.version (WAITING_APPROVAL
+          // → RUNNING). Refresh the CAS token now — every later version-guarded
+          // activity (commitRunResult) must present the post-bump version, or
+          // the terminal commit fails with "stale run version".
+          try {
+            const refreshed = await getRunVersion();
+            const v = extractVersionNumber(refreshed, 'version', 'runVersion');
+            if (v > 0) expectedRunVersion = v;
+          } catch {
+            // Transient refresh failure — keep the admission version; the
+            // terminal commit will surface a genuine staleness loudly.
+          }
           if (decision.decision !== 'APPROVED') {
             await emitEvent({
               scope: {
@@ -1020,6 +1144,11 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
               result: { error: 'APPROVAL_DENIED' },
               denied: true,
             });
+          } else {
+            // APPROVED: the call stays runnable, but executeTool still needs
+            // the Engine approval ID or the gateway rejects it with
+            // APPROVAL_REQUIRED — the approval would be silently lost.
+            approvedCallIds.recordApproved(call.id, approvalId);
           }
         }
 
@@ -1049,7 +1178,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         const mutating = pairs.filter((p) => p.descriptor.effectClass !== 'READ_ONLY');
 
         const executeOne = async (
-          call: { id: string; name: string; args: unknown },
+          call: { id: string; name: string; args?: unknown },
           descriptor: { version: string; effectClass: 'READ_ONLY' | 'MUTATING' | 'DESTRUCTIVE' },
           stepId: string,
           approvalId?: string,
@@ -1060,7 +1189,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
             stepId,
             toolName: call.name,
             toolVersion: descriptor.version,
-            args: call.args,
+            args: call.args ?? {},
             idempotencyKey: `${input.runId}:${stepId}:${descriptor.version}`,
             effectClass: descriptor.effectClass,
             ...(approvalId !== undefined ? { approvalId } : {}),
@@ -1119,6 +1248,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
               p.call,
               p.descriptor,
               `${input.runId}#${input.workflowGeneration}#tool/${p.call.name}/${turns}/r${i}`,
+              approvedCallIds.forExecution(p.call.id),
             ),
           ),
         );
@@ -1128,6 +1258,7 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
             p.call,
             p.descriptor,
             `${input.runId}#${input.workflowGeneration}#tool/${p.call.name}/${turns}/m${i}`,
+            approvedCallIds.forExecution(p.call.id),
           );
         }
         if (overBudget.length > 0) {
@@ -1138,20 +1269,29 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         const ordered = modelRes.toolCalls
           .map((c) => entries.get(c.id))
           .filter((e): e is ToolOutcomeEntry => e !== undefined)
-          .map((e) => ({
+          .map((e): WorkflowToolOutcome => ({
             tool_call_id: e.toolCallId,
             tool: e.toolName,
             status: e.success ? 'EXECUTED' : e.denied ? 'DENIED' : 'FAILED',
             result: e.result,
           }));
-        messages.push({ role: 'tool', content: JSON.stringify(ordered).slice(0, 8192) });
+        // ONE tool message per turn — CoreMessage tool-result parts
+        // (see buildToolResultHistoryMessage).
+        messages.push(buildToolResultHistoryMessage(ordered));
         // FL-2.16 - trim consumed tool messages past the bound (cache-safe:
         // the stable prefix is untouched; only post-prefix tool rows drop).
+        // Size counts serialized content: string content directly, part
+        // arrays via their JSON form (tool-result parts carry real payload).
         {
-          const totalChars = messages.reduce(
-            (acc, m) => acc + (typeof m.content === 'string' ? m.content.length : 0),
-            0,
-          );
+          const contentChars = (c: ModelMessageContent): number => {
+            if (typeof c === 'string') return c.length;
+            try {
+              return JSON.stringify(c).length;
+            } catch {
+              return 0;
+            }
+          };
+          const totalChars = messages.reduce((acc, m) => acc + contentChars(m.content), 0);
           if (totalChars > 24_000) {
             const toolPositions = messages
               .map((m, i) => (m.role === 'tool' ? i : -1))
@@ -1205,21 +1345,9 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       }
       progress.kernelState.status = 'CANCELLED';
       progress.kernelState.cancelled = true;
-      await emitEvent({
-        scope: {
-          organizationId: input.organizationId,
-          conversationId: input.conversationId,
-          runId: input.runId,
-          correlationId: input.correlationId,
-        },
-        type: 'RunFailed',
-        body: {
-          kind: 'RunFailed',
-          runId: input.runId,
-          errorCode: 'CANCELLED',
-          errorMessageHash: `cancelled:${reason}`,
-        },
-      }).catch(() => {});
+      // No RunFailed emit: failRun above writes the terminal `run.failed`
+      // run-event atomically with the FAILED transition (Engine owns the run
+      // lifecycle); a post-terminal AppendRunEvents is always rejected.
       throw err;
     }
     if (msg.startsWith('CONTINUE_AS_NEW:')) {
@@ -1261,21 +1389,15 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       // failRun itself is idempotent; ignore duplicate
     }
     progress.kernelState.status = 'FAILED';
-    await emitEvent({
-      scope: {
-        organizationId: input.organizationId,
-        conversationId: input.conversationId,
-        runId: input.runId,
-        correlationId: input.correlationId,
-      },
-      type: 'RunFailed',
-      body: { kind: 'RunFailed', runId: input.runId, errorCode: 'FAILED', errorMessageHash: msg },
-    }).catch(() => {});
+    // No RunFailed emit: failRun above writes the terminal `run.failed`
+    // run-event atomically with the FAILED transition (Engine owns the run
+    // lifecycle); a post-terminal AppendRunEvents is always rejected, and if
+    // failRun itself failed the emit would fail the same lease/version check.
     throw err;
   } finally {
     // Epoch-fenced lease release — best effort; safe on CAN (next generation re-claims)
     try {
-      if (leaseEpoch > 0n) {
+      if (leaseEpoch > 0) {
         await _releaseRunLease(leaseEpoch);
       }
     } catch {

@@ -23,7 +23,7 @@ import {
   createCheckpointActivities,
 } from '@neryva/activities';
 import { resolveModerationHook, type ModerationHook } from '@neryva/security';
-import { EngineSecretProvider } from '@neryva/activities';
+import { EngineSecretProvider, toUint64 } from '@neryva/activities';
 
 /**
  * Convert the Engine's claim response to a Temporal-serializable plain object.
@@ -201,7 +201,9 @@ export function createActivityRegistry(opts: ActivityRegistryOptions): Record<st
         : never
       : never;
     expectedLeaseOwner?: string;
-    expectedLeaseEpoch?: bigint;
+    // Temporal cannot serialize bigint, so the workflow passes a plain JSON
+    // number; coerce to the uint64 bigint the protobuf client requires.
+    expectedLeaseEpoch?: bigint | number;
     capabilityToken?: string;
     capabilityId?: string;
   }) => {
@@ -222,7 +224,11 @@ export function createActivityRegistry(opts: ActivityRegistryOptions): Record<st
         expectedLeaseEpoch: expectedEpoch,
       });
     try {
-      const res: unknown = await claim(params.expectedLeaseEpoch);
+      // Boundary: the workflow passes a plain JSON number; coerce to the
+      // uint64 the protobuf client requires, rejecting unsafe values loudly.
+      // Passed through untouched — toUint64 accepts both number and bigint.
+      const epoch = toUint64(params.expectedLeaseEpoch, 'expectedLeaseEpoch');
+      const res: unknown = await claim(epoch);
       // The dispatch client is cached per runId, so every later activity resolves
       // the same Engine-issued capability via clientForRun. (The Engine's claim
       // response carries no capability — capabilities are issued at dispatch —
