@@ -27,6 +27,7 @@ import {
 
 import { assertWorkflowInputBounded } from './payload.js';
 import { extractVersionNumber, isTemporalJsonSafe } from './version-extract.js';
+import { classifyTerminalFailure } from './terminal-failure.js';
 import { ApprovalIdMap } from './approval-ids.js';
 import { buildToolCallCompletedEmit } from './tool-call-events.js';
 import { shouldContinueAsNew, incrementHistoryCount } from './continue-as-new.js';
@@ -1481,10 +1482,15 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
       ).catch(() => {});
     }
     try {
+      // A2-68 — unwrap the Temporal failure chain so the terminal event/row
+      // names the real cause (e.g. tool policy denied: create_ticket) instead
+      // of the generic code=FAILED / "Activity task failed".
+      const terminal = classifyTerminalFailure(err);
+      const budgetBreach = msg.startsWith('BUDGET_EXHAUSTED:');
       await failRun(
         {
-          errorCode: msg.startsWith('BUDGET_EXHAUSTED:') ? 'BUDGET_EXHAUSTED' : 'FAILED',
-          errorMessage: msg.slice(0, 1024),
+          errorCode: budgetBreach ? 'BUDGET_EXHAUSTED' : terminal.code,
+          errorMessage: (budgetBreach ? msg : terminal.message).slice(0, 1024),
         },
         recoveryMaterial(),
       );
