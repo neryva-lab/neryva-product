@@ -18,8 +18,20 @@ export const SENSITIVE_FIELDS = new Set<string>([
   'token',
 ]);
 
+/**
+ * Field-name matching is case- and separator-insensitive: `apiKey`,
+ * `api-key`, `API_KEY`, and `api_key` all denote the same secret carrier.
+ * Wave-3 evidence flagged that `redactObject` missed camelCase `apiKey`;
+ * normalizing closes the whole class rather than adding one-off entries.
+ */
+const normalizeField = (field: string): string => field.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const NORMALIZED_SENSITIVE_FIELDS = new Set<string>(
+  [...SENSITIVE_FIELDS].map(normalizeField),
+);
+
 export function isSensitiveField(field: string): boolean {
-  return SENSITIVE_FIELDS.has(field);
+  return NORMALIZED_SENSITIVE_FIELDS.has(normalizeField(field));
 }
 
 export function redactValue(field: string, value: unknown, depth = 0): unknown {
