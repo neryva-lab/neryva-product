@@ -14,10 +14,24 @@ import {
 } from '@neryva/contracts/provider/model-response';
 import type { NeryvaToolCall } from '@neryva/contracts/provider/tool-call';
 import type { SecretProvider, SecretRef } from '@neryva/security';
+import {
+  createRuntimeEvent,
+  type RuntimeEvent,
+} from '@neryva/contracts/events/runtime-events';
+import { incrementCounter } from '@neryva/telemetry';
 
 export interface ModelActivitiesOptions {
   gateway: ModelGateway;
   secretProvider?: SecretProvider | undefined;
+}
+
+/**
+ * Structural surface for emitting assistant-chunk events — satisfied by
+ * NeryvaMcpClient and by the runtime-worker's run-scoped client proxy (no
+ * package dependency needed, same pattern as EngineCredentialClient below).
+ */
+export interface AssistantChunkClient {
+  appendRunEvents(events: RuntimeEvent[]): Promise<unknown>;
 }
 
 export interface ModelCallParams extends Omit<NeryvaModelRequest, 'model'> {
@@ -25,6 +39,8 @@ export interface ModelCallParams extends Omit<NeryvaModelRequest, 'model'> {
   runId: string;
   stepId: string;
   organizationId: string;
+  /** Required for AssistantChunk emission (Engine event scope). */
+  conversationId?: string | undefined;
   agentVersionId: string;
   correlationId?: string | undefined;
   // Policy snapshot for routing (org allowlist)
@@ -191,7 +207,7 @@ export async function callModel(params: ModelCallParams): Promise<ModelCallResul
   } as NeryvaModelRequest & Record<string, unknown>;
 
   // Heartbeat during generation
-  const result = await gateway.generate(request, { signal: undefined });
+  const result = await generateWithChunkStreaming(gateway, request, params);
   heartbeat({ step: 'callModel:done', runId: params.runId, finishReason: result.finishReason });
 
   // Usage is normalized by gateway (costCents attached); activities will RecordUsage via MCP separately
@@ -199,6 +215,125 @@ export async function callModel(params: ModelCallParams): Promise<ModelCallResul
   // Boundary: explicit contract projection — the workflow must never see SDK
   // internals that Temporal cannot serialize (see projectModelCallResult).
   return projectModelCallResult(result, params.stepId);
+}
+
+/**
+ * Fixed chunk width for AssistantChunk emission. Chunk boundaries are
+ * deterministic (character count, never timing): an activity retry replays
+ * the same stream into the same chunks, and chunk eventIds derive from
+ * (runId, stepId, chunk index) — Engine dedups on (run_id, event_id), so
+ * retried streams are idempotent. 400 chars is far under the 8192-char
+ * AssistantChunkBody limit and keeps per-event DB rows small.
+ */
+const ASSISTANT_CHUNK_FLUSH_CHARS = 400;
+
+/**
+ * A2-63 — stream the model response and emit AssistantChunk run events as
+ * text arrives, so the Engine's SSE `delta` channel carries live tokens
+ * (ENGINE SSE_EVENT_NAMES['2'] = 'delta' ← EVENT_TYPE_ASSISTANT_CHUNK).
+ *
+ * Invariants:
+ * - The streamed deltas are progressive hints only. The canonical result is
+ *   ALWAYS gateway.finalResponse (or generate() on fallback); the durable
+ *   assistant message goes through commitRunResult, never through deltas.
+ * - Chunk emission is best-effort: a failed append never fails the model call.
+ * - If streaming is unavailable (explicit opt-out, no chunk client, or no
+ *   conversationId for event scope), or the stream errors, fall back to the
+ *   previous non-streaming generate() behavior — the ModelCallResult contract
+ *   is unchanged either way.
+ */
+async function generateWithChunkStreaming(
+  gateway: ModelGateway,
+  request: NeryvaModelRequest & Record<string, unknown>,
+  params: ModelCallParams,
+): Promise<NeryvaModelResponse> {
+  const chunkClient =
+    (params as unknown as { __chunkClient?: AssistantChunkClient }).__chunkClient ??
+    globalChunkClient;
+  const conversationId = params.conversationId;
+  if (params.stream === false || !chunkClient || !conversationId) {
+    return gateway.generate(request, { signal: undefined });
+  }
+  const producerId =
+    (params as unknown as { __chunkProducerId?: string }).__chunkProducerId ??
+    globalChunkProducerId ??
+    'runtime-worker';
+  const correlationId = params.correlationId ?? params.runId;
+  try {
+    const streamResult = await gateway.stream(request, { signal: undefined });
+    let pending = '';
+    let chunkIndex = 0;
+    // Tool calls observed on the stream — merged into the result below as
+    // defense-in-depth (finalResponse is adapter-dependent and optional).
+    const streamedToolCalls: Array<{ id: string; name: string; args: unknown }> = [];
+    const emitChunk = async (text: string, isFinal: boolean): Promise<void> => {
+      if (!text) return;
+      const event = createRuntimeEvent(
+        {
+          runId: params.runId,
+          organizationId: params.organizationId,
+          conversationId,
+          stepId: params.stepId,
+          type: 'AssistantChunk',
+          producerId,
+          correlationId,
+          // Deterministic logical key → deterministic eventId → idempotent replay.
+          idempotencyLogical: `chunk:${chunkIndex}`,
+        },
+        { kind: 'AssistantChunk', runId: params.runId, text, isFinal },
+      );
+      chunkIndex += 1;
+      try {
+        await chunkClient.appendRunEvents([event]);
+        incrementCounter('run_events_appended_total', { type: 'AssistantChunk', outcome: 'success' });
+      } catch {
+        // Progressive hint only; the durable final message is committed
+        // separately. Never fail the model call because a chunk append failed.
+        incrementCounter('run_events_appended_total', { type: 'AssistantChunk', outcome: 'error' });
+      }
+      heartbeat({ step: 'callModel:stream', runId: params.runId, chunkIndex });
+    };
+    for await (const streamEvent of streamResult.stream) {
+      if (streamEvent.type === 'text-delta') {
+        pending += streamEvent.delta;
+        if (pending.length >= ASSISTANT_CHUNK_FLUSH_CHARS) {
+          const flushText = pending;
+          pending = '';
+          await emitChunk(flushText, false);
+        }
+      } else if (streamEvent.type === 'tool-call') {
+        const tc = streamEvent.toolCall;
+        streamedToolCalls.push({ id: tc.id, name: tc.name, args: tc.args ?? {} });
+      } else if (streamEvent.type === 'error') {
+        throw new Error(`model stream error: ${streamEvent.error}`);
+      }
+      // tool-call-delta / finish are consumed via finalResponse below.
+    }
+    await emitChunk(pending, true);
+    if (streamResult.finalResponse) {
+      const final = await streamResult.finalResponse;
+      // Never let a lossy finalResponse silently drop the tool loop: if the
+      // stream carried tool calls, they must be on the result.
+      if (streamedToolCalls.length > 0 && (final.toolCalls ?? []).length === 0) {
+        return {
+          ...final,
+          toolCalls: streamedToolCalls,
+          finishReason: 'tool-call',
+        };
+      }
+      return final;
+    }
+    // Defensive: adapter streamed without a final response — re-run
+    // non-streaming rather than reassembling (usage/costing stays canonical).
+    incrementCounter('model_route_fallback_total', { reason: 'stream_no_final_response' });
+    return gateway.generate(request, { signal: undefined });
+  } catch (e) {
+    // Streaming is an enhancement; a failed stream must not fail the run.
+    incrementCounter('model_route_fallback_total', { reason: 'stream_error' });
+    heartbeat({ step: 'callModel:streamFallback', runId: params.runId });
+    void e;
+    return gateway.generate(request, { signal: undefined });
+  }
 }
 
 // For tests without DI, use global gateway singleton (created with dummy openai adapter)
@@ -250,7 +385,22 @@ export function engineCredentialRefs(): Record<string, string> {
   });
 }
 
-export function createModelActivities(gateway?: ModelGateway, secretProvider?: SecretProvider) {
+// Module-global chunk emission wiring (mirrors the __gateway pattern above):
+// createModelActivities installs the run-scoped client once; callModel params
+// may override per-invocation via the __chunkClient hidden field (tests).
+let globalChunkClient: AssistantChunkClient | undefined;
+let globalChunkProducerId: string | undefined;
+
+export interface CreateModelActivitiesOptions {
+  chunkClient?: AssistantChunkClient | undefined;
+  producerId?: string | undefined;
+}
+
+export function createModelActivities(
+  gateway?: ModelGateway,
+  secretProvider?: SecretProvider,
+  opts?: CreateModelActivitiesOptions,
+) {
   if (gateway) globalGateway = gateway;
   // REL-1.5 — production construction: no test adapters, every provider key
   // resolved per call through the Engine's audited disclosure rail.
@@ -262,6 +412,8 @@ export function createModelActivities(gateway?: ModelGateway, secretProvider?: S
     });
   }
   if (!globalGateway) globalGateway = new ModelGateway();
+  if (opts?.chunkClient) globalChunkClient = opts.chunkClient;
+  if (opts?.producerId) globalChunkProducerId = opts.producerId;
   return { callModel };
 }
 

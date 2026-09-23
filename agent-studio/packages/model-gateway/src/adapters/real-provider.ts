@@ -200,6 +200,9 @@ export async function realStream(
       { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
     let finishReason: string | undefined;
     let textAgg = '';
+    // Tool calls observed on the stream (AI SDK shape) — folded into
+    // finalResponse via fromAiSdkResult so the tool loop survives streaming.
+    let toolCallsAgg: Array<{ toolCallId: string; toolName: string; args: unknown }> = [];
     let aborted = false;
     try {
       const params: Record<string, unknown> = {
@@ -244,13 +247,19 @@ export async function realStream(
           textAgg += delta;
           yield { type: 'text-delta', delta };
         } else if (type === 'tool-call') {
+          const toolCall = {
+            id: String(part['toolCallId'] ?? ''),
+            name: String(part['toolName'] ?? ''),
+            args: part['args'] ?? part['input'],
+          };
+          toolCallsAgg.push({
+            toolCallId: toolCall.id,
+            toolName: toolCall.name,
+            args: toolCall.args,
+          });
           yield {
             type: 'tool-call',
-            toolCall: {
-              id: String(part['toolCallId'] ?? ''),
-              name: String(part['toolName'] ?? ''),
-              args: part['args'] ?? part['input'],
-            },
+            toolCall,
           };
         } else if (type === 'finish') {
           finishReason = String(part['finishReason'] ?? 'stop');
@@ -259,12 +268,20 @@ export async function realStream(
           throw mapAiSdkError(part['error'], cfg.providerId);
         }
       }
-      const mapped = fromAiSdkResult({ text: textAgg, finishReason, usage: usageAgg });
+      const mapped = fromAiSdkResult({
+        text: textAgg,
+        finishReason,
+        usage: usageAgg,
+        toolCalls: toolCallsAgg.length > 0 ? toolCallsAgg : undefined,
+      });
       finalResponse = {
         id: `stream_${request.correlationId ?? 'run'}`,
         model: request.model,
         providerId: cfg.providerId,
         text: textAgg || undefined,
+        // fromAiSdkResult maps the accumulated tool calls — the tool loop
+        // survives streaming only because they are included here.
+        toolCalls: mapped.response.toolCalls,
         finishReason: mapped.response.finishReason,
         usage: attachCost(mapped.usage, cap),
         providerFinishReason: mapped.providerFinishReason,

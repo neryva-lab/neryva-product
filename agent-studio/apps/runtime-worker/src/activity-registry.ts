@@ -277,6 +277,9 @@ export function createActivityRegistry(opts: ActivityRegistryOptions): Record<st
   const model = createModelActivities(
     undefined,
     new EngineSecretProvider(runScopedClient(opts.manager)),
+    // A2-63 — stream assistant tokens as AssistantChunk run events so the
+    // Engine's SSE `delta` channel carries live tokens during generation.
+    { chunkClient: runScopedClient(opts.manager), producerId: 'runtime-worker' },
   );
   const tool = createToolActivities({
     requestHandoff: async (runId: string, args: unknown) => {

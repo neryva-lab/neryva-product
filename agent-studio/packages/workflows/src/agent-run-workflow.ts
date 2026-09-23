@@ -244,6 +244,7 @@ type ModelActivities = {
     runId: string;
     stepId: string;
     organizationId: string;
+    conversationId?: string;
     agentVersionId: string;
     messages: Array<{ role: string; content: ModelMessageContent }>;
     tools?: NeryvaTool[];
@@ -922,6 +923,8 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           runId: input.runId,
           stepId: currentStepId,
           organizationId: input.organizationId,
+          // A2-63 — chunk event scope for AssistantChunk emission during streaming.
+          conversationId: input.conversationId,
           agentVersionId: input.agentVersionId,
           messages,
           // Engine-pinned schemas from the tool catalog (context v1.1) — the
