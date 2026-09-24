@@ -15,6 +15,8 @@ import { compileContext as compileContextAsPure } from '@neryva/context-compiler
 interface ManifestLike {
   assistantVersionId?: string;
   conversationId?: string;
+  /** A4-82: run actor's account id from the engine (null for service/channel triggers). */
+  runUserId?: string | null;
   instructions?: string;
   allowedModels?: string[];
   conversationSummary?: string;
@@ -43,7 +45,7 @@ interface ManifestLike {
       purpose?: string;
     }>;
   }>;
-  memories?: Array<{ memoryId: string; scope: string; content?: string }>;
+  memories?: Array<{ memoryId: string; scope: string; scopeId?: string; content?: string }>;
   knowledgeRefs?: Array<{ documentId: string; chunkId: string; snippet?: string; title?: string }>;
   tools?: Array<{
     name: string;
@@ -191,6 +193,9 @@ export function createContextActivities(client: NeryvaMcpClient) {
         conversationId: params.conversationId ?? manifest.conversationId ?? '',
         runId: params.runId,
         agentVersionId: params.agentVersionId,
+        // A4-82: run actor's account id from the engine; the compiler needs it to
+        // match user-scoped memories (scopeId equality), never the org as proxy.
+        userId: manifest.runUserId ?? undefined,
         agentDefinition: definition,
         policySnapshot: {
           organizationId: params.organizationId,
@@ -231,7 +236,12 @@ export function createContextActivities(client: NeryvaMcpClient) {
                 ? 'organization'
                 : 'conversation') as 'user' | 'conversation' | 'organization',
             scopeId:
-              m.scope === 'organization' ? params.organizationId : (manifest.conversationId ?? ''),
+              // A4-82: preserve the engine-authorized scopeId. The worker must NOT
+              // substitute conversationId for user scope — the engine resolves the
+              // user scope to the run actor's account id.
+              m.scope === 'organization'
+                ? params.organizationId
+                : (m.scopeId ?? manifest.conversationId ?? ''),
             content: m.content ?? '',
             visibility: 'shared' as const,
             status: 'APPROVED' as const,

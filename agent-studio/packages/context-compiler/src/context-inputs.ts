@@ -84,6 +84,8 @@ export interface CompilerInput {
   conversationId: string;
   runId: string;
   agentVersionId: string;
+  /** A4-82: run actor's account id (from the engine manifest). Required to match user-scoped memories. */
+  userId?: string | undefined;
 
   // 2 Immutable definition + policy
   agentDefinition: AgentDefinitionV1;

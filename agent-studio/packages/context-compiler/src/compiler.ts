@@ -178,7 +178,10 @@ export function compileContext(input: CompilerInput, opts: CompilerOptions = {})
     scope: def.context_policy.memory_scope as 'user' | 'conversation' | 'organization' | 'none',
     scopeId:
       def.context_policy.memory_scope === 'user'
-        ? input.organizationId // for tests, use org as user proxy; real would be userId from Engine
+        ? // A4-82: the engine resolves user scope to the run actor's account id;
+          // the org-as-proxy fallback keeps legacy tests green but matches nothing
+          // real, so a missing userId fails closed (zero user memories selected).
+          (input.userId ?? input.organizationId)
         : def.context_policy.memory_scope === 'conversation'
           ? input.conversationId
           : input.organizationId,
