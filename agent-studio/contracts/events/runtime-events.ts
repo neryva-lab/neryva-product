@@ -99,6 +99,14 @@ export type RuntimeEventBody =
       toolName: string;
       toolCallId: string;
       stepId: string;
+      /**
+       * A3-21 — sanitized argument summary JSON: the redacted argument object
+       * (sensitive fields replaced via @neryva/security redactObject), or a
+       * {"withheld": "..."} marker when the arguments cannot be safely
+       * summarized. Never raw secrets or credentials. Surfaced on the wire as
+       * ToolCallBody.arguments so the chat tool-call card can render it.
+       */
+      argumentSummary: string;
     }
   | {
       kind: 'ToolCallApproved';

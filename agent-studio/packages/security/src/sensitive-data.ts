@@ -68,6 +68,22 @@ const SECRET_PATTERNS: RegExp[] = [
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./, // JWTs
 ];
 
+/**
+ * True when the string LOOKS like a credential, regardless of the field name
+ * carrying it. Pure + deterministic (regexes only) — safe for workflow code.
+ *
+ * This closes the gap field-name redaction leaves: `{"value":"sk-..."}` or a
+ * top-level `"Bearer ..."` string would otherwise survive `redactObject`
+ * untouched. Callers summarizing untrusted values for the wire MUST run every
+ * string through this (or withhold the value) — see tool-call-events.
+ */
+export function isCredentialShapedString(value: string): boolean {
+  for (const pattern of SECRET_PATTERNS) {
+    if (pattern.test(value)) return true;
+  }
+  return false;
+}
+
 export function assertNoSensitiveInLog(message: string): void {
   const lower = message.toLowerCase();
   for (const field of SENSITIVE_FIELDS) {

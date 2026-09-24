@@ -32,4 +32,8 @@ export const CURRENT_WORKFLOW_VERSION: WorkflowVersion = WORKFLOW_VERSIONS.INITI
 export const PATCH_IDS = {
   APPROVAL_SIGNAL_V2: 'approval-signal-v2',
   CONTINUE_AS_NEW_V2: 'continue-as-new-v2',
+  // A3-21: emit the ToolCallProposed frame before executeTool. Old
+  // in-flight histories never recorded this marker, so patched() returns
+  // false on their replay and they keep the old order (no nondeterminism).
+  TOOL_CALL_PROPOSED_V1: 'tool-call-proposed-v1',
 } as const;

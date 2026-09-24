@@ -29,7 +29,7 @@ import { assertWorkflowInputBounded } from './payload.js';
 import { extractVersionNumber, isTemporalJsonSafe } from './version-extract.js';
 import { classifyTerminalFailure } from './terminal-failure.js';
 import { ApprovalIdMap } from './approval-ids.js';
-import { buildToolCallCompletedEmit } from './tool-call-events.js';
+import { buildToolCallCompletedEmit, buildToolCallEmit } from './tool-call-events.js';
 import { shouldContinueAsNew, incrementHistoryCount } from './continue-as-new.js';
 import { PATCH_IDS } from './workflow-versioning.js';
 import type { EventType, RuntimeEventBody } from '@neryva/contracts/events/runtime-events';
@@ -1268,6 +1268,38 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
           stepId: string,
           approvalId?: string,
         ): Promise<void> => {
+          // A3-21 — the producer tells the truth up front: emit the toolCall
+          // frame (name + sanitized args + model-assigned call id) BEFORE
+          // invocation so the chat's tool-call card renders name/args and the
+          // in-progress state; the ToolCallCompleted below resolves it.
+          // Identity = execution stepId (same as the completion), so a
+          // retried invocation replays to the same eventId (idempotent) and
+          // distinct invocations never collide.
+          // Patched: old in-flight histories never recorded this marker, so
+          // they replay down the old path (straight to executeTool) instead
+          // of failing nondeterminism on the inserted activity.
+          if (patched(PATCH_IDS.TOOL_CALL_PROPOSED_V1)) {
+            await emitEvent(
+              {
+                ...buildToolCallEmit({
+                  scope: {
+                    organizationId: input.organizationId,
+                    conversationId: input.conversationId,
+                    runId: input.runId,
+                    correlationId: input.correlationId,
+                  },
+                  stepId,
+                  toolName: call.name,
+                  toolCallId: call.id,
+                  args: call.args ?? {},
+                }),
+                // A3-21 — the summary carries user ticket-query content:
+                // mark PII so the Engine persists it under the PII class.
+                redaction: 'PII' as const,
+              },
+              recoveryMaterial(),
+            );
+          }
           const toolRes = await executeTool(
             {
               runId: input.runId,

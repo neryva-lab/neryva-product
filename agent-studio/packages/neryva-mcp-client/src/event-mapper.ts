@@ -5,6 +5,7 @@
  * dependency-free. Generated types only — never hand-copied message shapes.
  */
 
+import { createHash } from 'node:crypto';
 import { create } from '@bufbuild/protobuf';
 import { RunEventSchema } from '@neryva/mcp-contract/gen/ts/neryva/mcp/event/v1/event_pb.js';
 import type { RunEvent } from '@neryva/mcp-contract/gen/ts/neryva/mcp/event/v1/event_pb.js';
@@ -136,7 +137,14 @@ export function toMcpRunEvent(e: RuntimeEvent): RunEvent {
           value: {
             toolCallId: e.body.toolCallId,
             toolName: e.body.toolName,
-            argumentDigest: new Uint8Array(),
+            // A3-21 — the digest is now REAL: sha256 over the sanitized
+            // summary (previously an empty Uint8Array, violating the proto's
+            // bytes.len = 32). The summary itself rides as `arguments` so
+            // the console's parseRunEvent (value.arguments) can render it.
+            argumentDigest: createHash('sha256')
+              .update(e.body.argumentSummary, 'utf8')
+              .digest(),
+            arguments: e.body.argumentSummary,
           },
         },
       });

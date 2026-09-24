@@ -101,6 +101,12 @@ message ToolCallBody {
   string tool_call_id = 1 [(buf.validate.field).string.min_len = 1];
   string tool_name = 2 [(buf.validate.field).string.min_len = 1];
   bytes argument_digest = 3 [(buf.validate.field).bytes.len = 32];
+  // A3-21 — sanitized argument summary: JSON of the redacted argument object
+  // (sensitive fields replaced by the producer via @neryva/security
+  // redactObject), or a {"withheld": "..."} marker when the arguments cannot
+  // be safely summarized. Never raw secrets or credentials. Read by the
+  // console's parseRunEvent as value.arguments.
+  string arguments = 4 [(buf.validate.field).string.max_len = 2048];
 }
 
 message ToolResultBody {
