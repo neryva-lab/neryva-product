@@ -1145,11 +1145,14 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         const approvalCalls = modelRes.toolCalls.filter((c) => {
           if (entries.has(c.id)) return false;
           // Agent-level policy: if the agent's pinned policy marks this tool as
-          // 'required', it needs approval. This is the system of record —
-          // the static descriptor's approvalRequirement is not the authority.
-          // (Engine 6ce51c1 / Product 215f7fd: agentApprovalPolicy from StartRun)
+          // 'required', it needs approval. This is the system of record for the
+          // builder's "Always" setting (Engine 6ce51c1 / Product 215f7fd).
           const policy = input.agentApprovalPolicy?.[c.name];
-          return policy === 'required';
+          if (policy === 'required') return true;
+          // Static descriptor is the fallback: tools with an inherent REQUIRED
+          // approval requirement still need approval even if the agent policy
+          // doesn't list them. Both sources are ORed — either can trigger.
+          return toolByName.get(c.name)?.approvalRequirement === 'REQUIRED';
         });
         for (const call of approvalCalls) {
           const toolStepId = `${input.runId}#${input.workflowGeneration}#tool/${call.name}/${turns}`;
