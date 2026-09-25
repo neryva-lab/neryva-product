@@ -1311,6 +1311,11 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
               idempotencyKey: `${input.runId}:${stepId}:${descriptor.version}`,
               effectClass: descriptor.effectClass,
               ...(approvalId !== undefined ? { approvalId } : {}),
+              // Agent-level approval policy from the Engine (builder configuration).
+              // Ensures "Always" approval is honored even for READ_ONLY tools.
+              ...(input.agentApprovalPolicy !== undefined
+                ? { agentApprovalPolicy: input.agentApprovalPolicy }
+                : {}),
             },
             recoveryMaterial(),
           );

@@ -23,6 +23,10 @@ export const StartRunSchema = z.object({
   capabilityToken: z.string().min(1),
   capabilityId: z.string().min(1).default('engine-dispatch'),
   actorId: z.string().min(1).default('engine-dispatcher'),
+  // Agent-level per-tool approval policy (from assistant_versions.tool_policy).
+  // Maps tool name -> 'required' | 'optional' | 'none'. The workflow passes this
+  // to the gateway to enforce the builder's "Always" setting at execution time.
+  agentApprovalPolicy: z.record(z.string(), z.enum(['required', 'optional', 'none'])).optional(),
 });
 
 export type StartRunInput = z.infer<typeof StartRunSchema>;
@@ -152,6 +156,11 @@ export class RuntimeControlService {
           // never reaches the worker and every RPC fails permission_denied.
           capabilityToken: parsed.capabilityToken,
           capabilityId: parsed.capabilityId,
+          // Agent-level per-tool approval policy from the Engine.
+          // Ensures the builder's "Always" setting is honored at execution time.
+          ...(parsed.agentApprovalPolicy !== undefined
+            ? { agentApprovalPolicy: parsed.agentApprovalPolicy }
+            : {}),
         } satisfies Record<string, unknown>,
         {
           workflowId,

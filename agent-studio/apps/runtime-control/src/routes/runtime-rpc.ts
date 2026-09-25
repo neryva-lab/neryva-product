@@ -106,6 +106,16 @@ export function registerRuntimeControlRpc(router: ConnectRouter, deps: RuntimeRp
       if (deps.requireCapabilityToken && !req.capabilityToken) {
         throw new ConnectError('capability_token is required to start a run', Code.InvalidArgument);
       }
+      // Agent-level per-tool approval policy from the Engine (builder's "Always" setting).
+      // Convert proto map to plain record for the workflow input.
+      // Cast needed: generated types may lag the proto in some build setups.
+      const reqWithPolicy = req as typeof req & { agentApprovalPolicy?: Record<string, string> };
+      const agentApprovalPolicy: Record<string, 'required' | 'optional' | 'none'> = {};
+      for (const [toolName, approval] of Object.entries(reqWithPolicy.agentApprovalPolicy ?? {})) {
+        if (approval === 'required' || approval === 'optional' || approval === 'none') {
+          agentApprovalPolicy[toolName] = approval;
+        }
+      }
       const result = await deps.control.startRun({
         runId: c.runId,
         organizationId: c.organizationId,
@@ -117,6 +127,7 @@ export function registerRuntimeControlRpc(router: ConnectRouter, deps: RuntimeRp
         actorId: c.actorId,
         idempotencyKey: c.idempotencyKey || `start-run:${c.runId}`,
         correlationId: c.requestId || c.runId,
+        agentApprovalPolicy,
       });
       return {
         workflowId: result.workflowId,

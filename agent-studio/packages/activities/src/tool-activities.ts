@@ -89,6 +89,9 @@ export interface ExecuteToolParams {
   conversationId?: string | undefined;
   policyVersion?: string | undefined;
   correlationId?: string | undefined;
+  // Agent-level per-tool approval policy (from assistant_versions.tool_policy).
+  // The workflow populates this from the Engine-provided policy snapshot.
+  agentApprovalPolicy?: Record<string, 'required' | 'optional' | 'none'> | undefined;
 }
 
 export interface ToolExecutionResult {
@@ -185,6 +188,7 @@ export async function executeTool(
     approvalDecision: params.approvalId
       ? { approvalId: params.approvalId, decision: 'APPROVED', stepId: params.stepId, toolCallId }
       : undefined,
+    agentApprovalPolicy: params.agentApprovalPolicy,
     handlerOverride: handler as unknown as (args: unknown, ctx: unknown) => Promise<unknown>,
   });
 

@@ -29,6 +29,11 @@ message StartRunRequest {
   int64 expected_conversation_version = 4 [(buf.validate.field).int64.gte = 0];
   // Short-lived capability token (compact proof of scope, not replacement for Engine authz).
   string capability_token = 5 [(buf.validate.field).string.min_len = 1];
+  // Agent-level per-tool approval policy (from assistant_versions.tool_policy).
+  // Maps tool name -> 'required' | 'optional' | 'none'. The Studio enforces this
+  // at execution time, ensuring the builder's "Always" setting is honored even
+  // for READ_ONLY tools. Populated by the Engine from the published version.
+  map<string, string> agent_approval_policy = 6;
   // Idempotency: caller must set ctx.idempotency_key; server dedups on (run_id, key).
 }
 

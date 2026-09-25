@@ -59,6 +59,10 @@ export interface GatewayExecuteParams {
         toolCallId?: string | undefined;
       }
     | undefined;
+  // Agent-level per-tool approval policy (from assistant_versions.tool_policy).
+  // Overrides the static descriptor: 'required' forces approval even if the
+  // descriptor says NONE (e.g., user set "Always" in the builder).
+  agentApprovalPolicy?: Record<string, 'required' | 'optional' | 'none'> | undefined;
   // For testing: inject handler
   handlerOverride?: ((args: unknown, ctx: ToolContext) => Promise<unknown>) | undefined;
 }
@@ -220,8 +224,12 @@ export class ToolGateway {
     }
 
     // 6. Require human approval when necessary (effect vs approval orthogonal)
+    // Agent-level policy (from the builder's per-tool "Always"/"Never" setting)
+    // overrides the static descriptor. This is how the user's explicit
+    // configuration is honored at execution time.
+    const agentPolicy = params.agentApprovalPolicy?.[toolName];
     const effectDecision = decideEffectPolicy(descriptor);
-    const requiresApproval = effectDecision.requiresApproval;
+    const requiresApproval = agentPolicy === 'required' ? true : effectDecision.requiresApproval;
     let approved = !requiresApproval;
     if (requiresApproval) {
       // Correlation check: a decision only authorizes THIS step + tool call.

@@ -18,6 +18,13 @@ export interface AgentRunWorkflowInput {
   conversationId: string;
   agentVersionId: string;
   policySnapshotId: string;
+  /**
+   * Agent-level per-tool approval policy (from assistant_versions.tool_policy).
+   * Maps tool name → approval requirement. The Engine populates this from the
+   * published agent version so the Studio can enforce the user's builder
+   * configuration (e.g., "Always" approval) at execution time.
+   */
+  agentApprovalPolicy?: Record<string, 'required' | 'optional' | 'none'> | undefined;
   /** Bounded: caller passes only refs, not full history. Engine owns history (main.md:114-190). */
   triggerMessageId?: string | undefined;
   /** Artifact refs for any large inline payload that exceeded threshold at admission. */
