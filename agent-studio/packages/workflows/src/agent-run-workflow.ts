@@ -1142,9 +1142,15 @@ export async function agentRunWorkflow(input: AgentRunWorkflowInput): Promise<st
         // classification comes from the pinned descriptor — never from model
         // output (Phase 6 policy boundary). DENIED calls become denial entries
         // the model sees; the run continues rather than fails.
-        const approvalCalls = modelRes.toolCalls.filter(
-          (c) => !entries.has(c.id) && toolByName.get(c.name)?.approvalRequirement === 'REQUIRED',
-        );
+        const approvalCalls = modelRes.toolCalls.filter((c) => {
+          if (entries.has(c.id)) return false;
+          // Agent-level policy: if the agent's pinned policy marks this tool as
+          // 'required', it needs approval. This is the system of record —
+          // the static descriptor's approvalRequirement is not the authority.
+          // (Engine 6ce51c1 / Product 215f7fd: agentApprovalPolicy from StartRun)
+          const policy = input.agentApprovalPolicy?.[c.name];
+          return policy === 'required';
+        });
         for (const call of approvalCalls) {
           const toolStepId = `${input.runId}#${input.workflowGeneration}#tool/${call.name}/${turns}`;
           const approvalId = `aprv_${input.runId}_${turns}_${call.id}`.slice(0, 64);
